@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+@theme {
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-serif: "IBM Plex Serif", ui-serif, Georgia, serif;
+  --font-sans: "IBM Plex Serif", ui-serif, Georgia, serif;
+
+  /* Warm analog palette — cream paper / ink, amber accent, rust error,
+     soft phosphor green for the on-screen keyboard active key. */
+  --color-paper: #f4ecd8;
+  --color-paper-deep: #ead8b8;
+  --color-ink: #2b2419;
+  --color-ink-soft: #5a4a36;
+  --color-amber: #c87533;
+  --color-rust: #a23b27;
+  --color-phosphor: #7fb069;
+  --color-phosphor-dim: #4a6a3f;
+}
+
+:root {
+  color-scheme: light;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-serif);
+  background-color: var(--color-paper);
+  /* Faint paper grain — pure CSS noise to avoid an asset for now. */
+  background-image:
+    radial-gradient(rgba(43, 36, 25, 0.04) 1px, transparent 1px),
+    radial-gradient(rgba(43, 36, 25, 0.03) 1px, transparent 1px);
+  background-size: 3px 3px, 7px 7px;
+  background-position: 0 0, 1px 1px;
+}
+
+/* Subtle CRT scanline overlay — applied selectively via a class so it
+   never covers the whole UI. Used on TypingSurface and CRTFrame. */
+.crt-scanlines {
+  position: relative;
+}
+.crt-scanlines::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(43, 36, 25, 0.05) 0,
+    rgba(43, 36, 25, 0.05) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  mix-blend-mode: multiply;
+  border-radius: inherit;
+}
+
+/* Calmer caret blink than the browser default. */
+@keyframes caret-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.caret-blink {
+  animation: caret-blink 1.2s steps(1) infinite;
+}
