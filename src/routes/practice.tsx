@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { TypingSession } from '@/components/typing/TypingSession';
 import { DesignNav } from '@/components/DesignNav';
+import { RaccoonCameos } from '@/components/mascot/RaccoonCameos';
 import { usePracticeSession } from '@/hooks/usePracticeSession';
 import { cn } from '@/lib/utils';
 
@@ -14,6 +15,7 @@ function Practice() {
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
       <DesignNav />
+      <RaccoonCameos />
       <header className="mb-8 flex items-baseline justify-between">
         <Link to="/" className="font-mono text-xs uppercase tracking-[0.3em] text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]">
           ← back

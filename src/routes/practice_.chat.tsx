@@ -3,7 +3,9 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { useEngineStore } from '@/engine/store';
 import { computeAccuracy, computeWpm } from '@/engine/metrics';
 import { usePracticeSession } from '@/hooks/usePracticeSession';
+import { useCaretScroll } from '@/hooks/useCaretScroll';
 import { DesignNav } from '@/components/DesignNav';
+import { RaccoonCameos } from '@/components/mascot/RaccoonCameos';
 import { OnScreenKeyboard } from '@/components/typing/OnScreenKeyboard';
 import { cn } from '@/lib/utils';
 
@@ -40,6 +42,7 @@ function ChatPractice() {
   return (
     <main className="relative flex min-h-screen flex-col bg-[#0b0d13] text-[#e6e8ef]">
       <DesignNav />
+      <RaccoonCameos />
 
       {/* thread header */}
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-[#2b2f3c] bg-[#0b0d13]/95 px-6 py-3 backdrop-blur">
@@ -73,7 +76,7 @@ function ChatPractice() {
             <div className="max-w-[78%] space-y-1">
               <p className="ml-3 text-[11px] text-[#8993a8]">remy · {raccoonHint(passage.modeId)}</p>
               <div
-                className="rounded-3xl rounded-bl-md bg-[#1c2030] px-4 py-3 text-[15px] leading-relaxed"
+                className="h-[220px] overflow-y-auto whitespace-pre-wrap rounded-3xl rounded-bl-md bg-[#1c2030] px-4 py-3 text-[15px] leading-relaxed"
                 style={{ boxShadow: '0 2px 14px rgba(0,0,0,0.25)' }}
               >
                 {passage.body}
@@ -178,7 +181,7 @@ function LiveReply({ onReset, onNext }: { onReset: () => void; onNext: () => voi
       <div className="flex flex-col items-end gap-1">
         <div
           className={cn(
-            'max-w-[78%] rounded-3xl rounded-br-md px-4 py-3 text-[15px] leading-relaxed',
+            'h-[220px] w-[78%] max-w-[78%] overflow-y-auto rounded-3xl rounded-br-md px-4 py-3 text-[15px] leading-relaxed',
             finished ? 'bg-[#4aa6ff] text-white' : 'bg-[#253050] text-[#e6e8ef]',
           )}
           style={{
@@ -249,8 +252,9 @@ function LiveText({
   cursor: number;
   finished: boolean;
 }) {
+  const caretRef = useCaretScroll();
   return (
-    <span className="font-mono text-[14px]">
+    <span className="whitespace-pre-wrap font-mono text-[14px]">
       {Array.from(target).map((ch, i) => {
         const past = i < cursor;
         const current = i === cursor && !finished;
@@ -260,6 +264,7 @@ function LiveText({
           return (
             <span
               key={i}
+              ref={caretRef}
               className="caret-blink"
               style={{
                 background: 'rgba(255,255,255,0.35)',

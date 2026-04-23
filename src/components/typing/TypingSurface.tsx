@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { useEngineStore } from '@/engine/store';
 import { cn } from '@/lib/utils';
 
@@ -20,6 +20,11 @@ function TypingSurfaceImpl() {
   const status = useEngineStore((s) => s.status);
 
   const chars = useMemo(() => Array.from(target), [target]);
+  const caretRef = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    caretRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [cursor]);
 
   return (
     <div
@@ -42,6 +47,7 @@ function TypingSurfaceImpl() {
             isCurrent={isCurrent}
             wasCorrect={wasCorrect}
             visualizeWhitespace={modeId === 'code'}
+            caretRef={isCurrent ? caretRef : undefined}
           />
         );
       })}
@@ -57,9 +63,10 @@ interface CharGlyphProps {
   isCurrent: boolean;
   wasCorrect: boolean;
   visualizeWhitespace: boolean;
+  caretRef?: React.RefObject<HTMLSpanElement | null>;
 }
 
-function CharGlyph({ ch, isPast, isCurrent, wasCorrect, visualizeWhitespace }: CharGlyphProps) {
+function CharGlyph({ ch, isPast, isCurrent, wasCorrect, visualizeWhitespace, caretRef }: CharGlyphProps) {
   let display: string = ch;
   let extraClass = '';
 
@@ -68,6 +75,7 @@ function CharGlyph({ ch, isPast, isCurrent, wasCorrect, visualizeWhitespace }: C
       <>
         {visualizeWhitespace && (
           <span
+            ref={caretRef}
             className={cn(
               'opacity-30',
               isCurrent && 'text-[var(--color-amber)] opacity-80 caret-blink',
@@ -98,7 +106,7 @@ function CharGlyph({ ch, isPast, isCurrent, wasCorrect, visualizeWhitespace }: C
     colorClass = 'text-[var(--color-rust)] bg-[var(--color-rust)]/15 rounded-[2px]';
   }
 
-  return <span className={cn(colorClass, extraClass)}>{display}</span>;
+  return <span ref={caretRef} className={cn(colorClass, extraClass)}>{display}</span>;
 }
 
 export const TypingSurface = memo(TypingSurfaceImpl);

@@ -59,10 +59,11 @@ body {
   border-radius: inherit;
 }
 
-/* Calmer caret blink than the browser default. */
+/* Calmer caret blink than the browser default. Fades the cursor highlight
+   but keeps the underlying glyph readable on the off-phase. */
 @keyframes caret-blink {
   0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
+  50%, 100% { opacity: 0.45; }
 }
 .caret-blink {
   animation: caret-blink 1.2s steps(1) infinite;

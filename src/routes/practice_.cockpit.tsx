@@ -3,7 +3,9 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { useEngineStore } from '@/engine/store';
 import { computeAccuracy, computeWpm } from '@/engine/metrics';
 import { usePracticeSession } from '@/hooks/usePracticeSession';
+import { useCaretScroll } from '@/hooks/useCaretScroll';
 import { DesignNav } from '@/components/DesignNav';
+import { RaccoonCameos } from '@/components/mascot/RaccoonCameos';
 import { OnScreenKeyboard } from '@/components/typing/OnScreenKeyboard';
 import { cn } from '@/lib/utils';
 
@@ -33,6 +35,7 @@ function CockpitPractice() {
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#060402] text-[#ffd787]">
       <DesignNav />
+      <RaccoonCameos />
 
       {/* subtle amber glow */}
       <div
@@ -185,9 +188,10 @@ function CockpitSurface() {
   const cursor = useEngineStore((s) => s.cursor);
   const typed = useEngineStore((s) => s.typed);
   const status = useEngineStore((s) => s.status);
+  const caretRef = useCaretScroll();
 
   return (
-    <div className="whitespace-pre-wrap break-words font-mono text-[22px] leading-[1.6] tracking-wide">
+    <div className="h-[260px] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[22px] leading-[1.6] tracking-wide">
       {Array.from(target).map((ch, i) => {
         const past = i < cursor;
         const current = i === cursor && status !== 'finished';
@@ -197,6 +201,7 @@ function CockpitSurface() {
           return (
             <span
               key={i}
+              ref={caretRef}
               className="caret-blink"
               style={{
                 color: '#060402',

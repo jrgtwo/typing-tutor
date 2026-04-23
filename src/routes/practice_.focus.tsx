@@ -3,7 +3,9 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { useEngineStore } from '@/engine/store';
 import { computeAccuracy, computeWpm } from '@/engine/metrics';
 import { usePracticeSession } from '@/hooks/usePracticeSession';
+import { useCaretScroll } from '@/hooks/useCaretScroll';
 import { DesignNav } from '@/components/DesignNav';
+import { RaccoonCameos } from '@/components/mascot/RaccoonCameos';
 import { OnScreenKeyboard } from '@/components/typing/OnScreenKeyboard';
 import { cn } from '@/lib/utils';
 
@@ -33,6 +35,7 @@ function FocusPractice() {
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#0b0f1a] text-[#d8e0f0]">
       <DesignNav />
+      <RaccoonCameos />
       {/* ambient glow */}
       <div
         className="pointer-events-none absolute inset-0"
@@ -119,9 +122,10 @@ function FocusSurface() {
   const cursor = useEngineStore((s) => s.cursor);
   const typed = useEngineStore((s) => s.typed);
   const status = useEngineStore((s) => s.status);
+  const caretRef = useCaretScroll();
 
   return (
-    <div className="whitespace-pre-wrap break-words text-center font-serif text-[30px] leading-[1.6] tracking-wide">
+    <div className="h-[300px] overflow-y-auto whitespace-pre-wrap break-words text-center font-serif text-[30px] leading-[1.6] tracking-wide">
       {Array.from(target).map((ch, i) => {
         const past = i < cursor;
         const current = i === cursor && status !== 'finished';
@@ -131,6 +135,7 @@ function FocusSurface() {
           return (
             <span
               key={i}
+              ref={caretRef}
               className="relative text-[#ffffff]"
               style={{
                 textShadow: '0 0 18px rgba(180,203,255,0.9), 0 0 36px rgba(180,203,255,0.5)',

@@ -3,7 +3,9 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { useEngineStore } from '@/engine/store';
 import { computeAccuracy, computeWpm } from '@/engine/metrics';
 import { usePracticeSession } from '@/hooks/usePracticeSession';
+import { useCaretScroll } from '@/hooks/useCaretScroll';
 import { DesignNav } from '@/components/DesignNav';
+import { RaccoonCameos } from '@/components/mascot/RaccoonCameos';
 import { OnScreenKeyboard } from '@/components/typing/OnScreenKeyboard';
 import { cn } from '@/lib/utils';
 
@@ -40,6 +42,7 @@ function DeskPractice() {
       }}
     >
       <DesignNav />
+      <RaccoonCameos />
 
       {/* wood grain */}
       <div
@@ -224,9 +227,10 @@ function DeskSurface() {
   const cursor = useEngineStore((s) => s.cursor);
   const typed = useEngineStore((s) => s.typed);
   const status = useEngineStore((s) => s.status);
+  const caretRef = useCaretScroll();
 
   return (
-    <div className="whitespace-pre-wrap break-words font-mono text-[19px] leading-[30px] tracking-[0.02em]">
+    <div className="h-[270px] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[19px] leading-[30px] tracking-[0.02em]">
       {Array.from(target).map((ch, i) => {
         const past = i < cursor;
         const current = i === cursor && status !== 'finished';
@@ -236,6 +240,7 @@ function DeskSurface() {
           return (
             <span
               key={i}
+              ref={caretRef}
               className="caret-blink"
               style={{
                 background: '#2a1f12',

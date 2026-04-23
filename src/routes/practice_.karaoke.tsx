@@ -4,6 +4,7 @@ import { useEngineStore } from '@/engine/store';
 import { computeAccuracy, computeWpm } from '@/engine/metrics';
 import { usePracticeSession } from '@/hooks/usePracticeSession';
 import { DesignNav } from '@/components/DesignNav';
+import { RaccoonCameos } from '@/components/mascot/RaccoonCameos';
 import { OnScreenKeyboard } from '@/components/typing/OnScreenKeyboard';
 import { cn } from '@/lib/utils';
 
@@ -34,6 +35,7 @@ function KaraokePractice() {
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#060318] text-[#ffffff]">
       <DesignNav />
+      <RaccoonCameos />
 
       {/* stage spot */}
       <div
@@ -237,7 +239,8 @@ function StageLine({
 }) {
   const chars = Array.from(target.slice(chunk.start, chunk.end));
   return (
-    <p className="font-serif text-5xl leading-[1.25] md:text-6xl" style={{ textShadow: '0 0 40px rgba(122,215,255,0.35)' }}>
+    <div className="flex h-[180px] items-center justify-center overflow-hidden">
+      <p className="font-serif text-5xl leading-[1.25] md:text-6xl" style={{ textShadow: '0 0 40px rgba(122,215,255,0.35)' }}>
       {chars.map((ch, i) => {
         const abs = chunk.start + i;
         const past = abs < cursor;
@@ -283,7 +286,8 @@ function StageLine({
         }
         return <span key={i} className="text-white/35">{ch}</span>;
       })}
-    </p>
+      </p>
+    </div>
   );
 }
 

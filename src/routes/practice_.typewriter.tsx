@@ -3,7 +3,9 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { useEngineStore } from '@/engine/store';
 import { computeAccuracy, computeWpm } from '@/engine/metrics';
 import { usePracticeSession } from '@/hooks/usePracticeSession';
+import { useCaretScroll } from '@/hooks/useCaretScroll';
 import { DesignNav } from '@/components/DesignNav';
+import { RaccoonCameos } from '@/components/mascot/RaccoonCameos';
 import { OnScreenKeyboard } from '@/components/typing/OnScreenKeyboard';
 import { cn } from '@/lib/utils';
 
@@ -33,6 +35,7 @@ function TypewriterPractice() {
   return (
     <main className="min-h-screen bg-[#141110] text-[#e8dcc2]">
       <DesignNav />
+      <RaccoonCameos />
       {/* desk grain */}
       <div
         className="pointer-events-none fixed inset-0 opacity-40"
@@ -123,9 +126,10 @@ function TypewriterSurface() {
   const cursor = useEngineStore((s) => s.cursor);
   const typed = useEngineStore((s) => s.typed);
   const status = useEngineStore((s) => s.status);
+  const caretRef = useCaretScroll();
 
   return (
-    <div className="whitespace-pre-wrap break-words font-mono text-[20px] leading-[30px] tracking-[0.04em]">
+    <div className="h-[270px] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[20px] leading-[30px] tracking-[0.04em]">
       {Array.from(target).map((ch, i) => {
         const past = i < cursor;
         const current = i === cursor && status !== 'finished';
@@ -135,6 +139,7 @@ function TypewriterSurface() {
           return (
             <span
               key={i}
+              ref={caretRef}
               className="relative text-[#e8dcc2]"
               style={{
                 boxShadow: 'inset 0 -3px 0 #e8dcc2',

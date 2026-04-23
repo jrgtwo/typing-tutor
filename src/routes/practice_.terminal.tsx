@@ -3,7 +3,9 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { useEngineStore } from '@/engine/store';
 import { computeAccuracy, computeWpm } from '@/engine/metrics';
 import { usePracticeSession } from '@/hooks/usePracticeSession';
+import { useCaretScroll } from '@/hooks/useCaretScroll';
 import { DesignNav } from '@/components/DesignNav';
+import { RaccoonCameos } from '@/components/mascot/RaccoonCameos';
 import { OnScreenKeyboard } from '@/components/typing/OnScreenKeyboard';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +30,7 @@ function TerminalPractice() {
   return (
     <main className="min-h-screen bg-black font-mono text-[#7fb069] selection:bg-[#7fb069] selection:text-black">
       <DesignNav />
+      <RaccoonCameos />
       <div className="mx-auto max-w-4xl px-6 py-10">
         <div className="mb-6 flex items-center justify-between text-xs uppercase tracking-[0.3em] text-[#7fb069]/60">
           <Link to="/" className="hover:text-[#7fb069]">../</Link>
@@ -127,16 +130,17 @@ function TerminalSurface() {
   const cursor = useEngineStore((s) => s.cursor);
   const typed = useEngineStore((s) => s.typed);
   const status = useEngineStore((s) => s.status);
+  const caretRef = useCaretScroll();
 
   return (
-    <div className="whitespace-pre-wrap break-words font-mono text-[22px] leading-[1.55] tracking-wide">
+    <div className="h-[260px] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[22px] leading-[1.55] tracking-wide">
       {Array.from(target).map((ch, i) => {
         const past = i < cursor;
         const current = i === cursor && status !== 'finished';
         const ok = past && typed[i] === ch;
         if (current) {
           return (
-            <span key={i} className="bg-[#7fb069] text-black">
+            <span key={i} ref={caretRef} className="bg-[#7fb069] text-black">
               {ch === '\n' ? '↵\n' : ch}
             </span>
           );

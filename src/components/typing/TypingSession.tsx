@@ -22,7 +22,7 @@ export function TypingSession({ onReset, onNext }: TypingSessionProps) {
   return (
     <div className="space-y-6">
       <HUD />
-      <CRTFrame className="px-8 py-10">
+      <CRTFrame className="h-[320px] overflow-y-auto px-8 py-10">
         <TypingSurface />
       </CRTFrame>
       <OnScreenKeyboard />
