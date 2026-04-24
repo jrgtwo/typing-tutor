@@ -122,10 +122,18 @@ function FocusSurface() {
   const cursor = useEngineStore((s) => s.cursor);
   const typed = useEngineStore((s) => s.typed);
   const status = useEngineStore((s) => s.status);
+  const modeId = useEngineStore((s) => s.modeId);
   const caretRef = useCaretScroll();
 
   return (
-    <div className="h-[300px] overflow-y-auto whitespace-pre-wrap break-words text-center font-serif text-[30px] leading-[1.6] tracking-wide">
+    <div
+      className={cn(
+        'h-[300px] overflow-y-auto whitespace-pre-wrap break-words leading-[1.6] tracking-wide',
+        modeId === 'code'
+          ? 'text-left font-mono text-[22px]'
+          : 'text-center font-serif text-[30px]',
+      )}
+    >
       {Array.from(target).map((ch, i) => {
         const past = i < cursor;
         const current = i === cursor && status !== 'finished';

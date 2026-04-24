@@ -132,8 +132,8 @@ const EYE_BY_MOOD: Record<Mood, React.ReactNode> = {
   // eyes cut down to slits
   judgy: (
     <>
-      <rect x="43" y="65" width="10" height="2.2" rx="1.1" fill="#1a1712" />
-      <rect x="87" y="65" width="10" height="2.2" rx="1.1" fill="#1a1712" />
+      <rect x="43" y="65" width="10" height="2.2" rx="1.1" fill="#f2ede4" />
+      <rect x="87" y="65" width="10" height="2.2" rx="1.1" fill="#f2ede4" />
     </>
   ),
   // one raised brow + side-glance pupils
@@ -148,8 +148,8 @@ const EYE_BY_MOOD: Record<Mood, React.ReactNode> = {
   // closed-arc eyes
   pleased: (
     <>
-      <path d="M 43 68 Q 48 62 53 68" stroke="#1a1712" strokeWidth="2.2" fill="none" strokeLinecap="round" />
-      <path d="M 87 68 Q 92 62 97 68" stroke="#1a1712" strokeWidth="2.2" fill="none" strokeLinecap="round" />
+      <path d="M 43 68 Q 48 62 53 68" stroke="#f2ede4" strokeWidth="2.2" fill="none" strokeLinecap="round" />
+      <path d="M 87 68 Q 92 62 97 68" stroke="#f2ede4" strokeWidth="2.2" fill="none" strokeLinecap="round" />
     </>
   ),
   // wide & shiny
