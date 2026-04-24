@@ -101,6 +101,7 @@ export function reduce(state: EngineState, event: EngineEvent): EngineState {
       let newCursor = s.cursor + 1;
       let newTyped = s.typed + inputChar;
       let newCharsCorrect = s.charsCorrect;
+      let newCharsTyped = s.charsTyped + 1;
       let newErrors = s.errors;
 
       if (correct) {
@@ -112,6 +113,7 @@ export function reduce(state: EngineState, event: EngineEvent): EngineState {
           newCursor += indent;
           newTyped += s.target.slice(s.cursor + 1, s.cursor + 1 + indent);
           newCharsCorrect += indent;
+          newCharsTyped += indent;
         }
       } else {
         newErrors = s.errors + 1;
@@ -122,7 +124,7 @@ export function reduce(state: EngineState, event: EngineEvent): EngineState {
         ...s,
         cursor: newCursor,
         typed: newTyped,
-        charsTyped: s.charsTyped + 1,
+        charsTyped: newCharsTyped,
         charsCorrect: newCharsCorrect,
         errors: newErrors,
         lastKeyAt: event.at,

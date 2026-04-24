@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { useEngineStore } from '@/engine/store';
 import type { EngineState } from '@/engine/types';
 import { cn } from '@/lib/utils';
@@ -83,6 +83,7 @@ function expectedKeyFor(target: string, cursor: number): string | null {
 
 function OnScreenKeyboardImpl() {
   const lastKey = useEngineStore((s) => s.lastKey);
+  const lastKeyAt = useEngineStore((s) => s.lastKeyAt);
   const target = useEngineStore((s) => s.target);
   const cursor = useEngineStore((s) => s.cursor);
   const status = useEngineStore((s) => s.status);
@@ -93,11 +94,11 @@ function OnScreenKeyboardImpl() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-1.5 select-none">
-      <KeyRow row={ROW_NUM} active={active} expected={expected} stats={keyStats} />
-      <KeyRow row={ROW_TOP} active={active} expected={expected} stats={keyStats} />
-      <KeyRow row={ROW_HOME} active={active} expected={expected} stats={keyStats} />
-      <KeyRow row={ROW_BOT} active={active} expected={expected} stats={keyStats} />
-      <KeyRow row={ROW_SPACE} active={active} expected={expected} stats={keyStats} />
+      <KeyRow row={ROW_NUM} active={active} expected={expected} stats={keyStats} lastKeyAt={lastKeyAt} />
+      <KeyRow row={ROW_TOP} active={active} expected={expected} stats={keyStats} lastKeyAt={lastKeyAt} />
+      <KeyRow row={ROW_HOME} active={active} expected={expected} stats={keyStats} lastKeyAt={lastKeyAt} />
+      <KeyRow row={ROW_BOT} active={active} expected={expected} stats={keyStats} lastKeyAt={lastKeyAt} />
+      <KeyRow row={ROW_SPACE} active={active} expected={expected} stats={keyStats} lastKeyAt={lastKeyAt} />
     </div>
   );
 }
@@ -107,9 +108,10 @@ interface KeyRowProps {
   active: string | null;
   expected: string | null;
   stats: EngineState['keyStats'];
+  lastKeyAt: number | null;
 }
 
-function KeyRow({ row, active, expected, stats }: KeyRowProps) {
+function KeyRow({ row, active, expected, stats, lastKeyAt }: KeyRowProps) {
   return (
     <div className="flex gap-1.5">
       {row.map((cell, i) => (
@@ -119,6 +121,7 @@ function KeyRow({ row, active, expected, stats }: KeyRowProps) {
           active={active}
           expected={expected}
           stats={stats}
+          lastKeyAt={lastKeyAt}
         />
       ))}
     </div>
@@ -130,16 +133,67 @@ interface KeyProps {
   active: string | null;
   expected: string | null;
   stats: EngineState['keyStats'];
+  lastKeyAt: number | null;
 }
 
-function Key({ cell, active, expected, stats }: KeyProps) {
+function spawnDebris(el: HTMLDivElement) {
+  const rect = el.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  // warm palette: amber, paper-deep, ink-soft
+  const colors = ['#c87533', '#ead8b8', '#5a4a36'];
+  const count = 5 + Math.floor(Math.random() * 3);
+
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement('div');
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 14 + Math.random() * 22;
+    const dx = Math.cos(angle) * dist;
+    const dy = Math.sin(angle) * dist - 6; // slight upward bias
+    const size = 1.5 + Math.random() * 2.5;
+    const rotate = Math.random() * 120 - 60;
+    const color = colors[Math.floor(Math.random() * colors.length)];
+
+    p.style.cssText = `
+      position:fixed;pointer-events:none;z-index:9999;
+      width:${size}px;height:${size}px;
+      background:${color};border-radius:1px;
+      left:${cx}px;top:${cy}px;
+      transform:translate(-50%,-50%);
+      opacity:1;
+      transition:transform 280ms ease-out,opacity 260ms ease-out;
+    `;
+    document.body.appendChild(p);
+
+    requestAnimationFrame(() => {
+      p.style.transform = `translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px)) rotate(${rotate}deg) scale(0.2)`;
+      p.style.opacity = '0';
+    });
+
+    setTimeout(() => p.remove(), 320);
+  }
+}
+
+function Key({ cell, active, expected, stats, lastKeyAt }: KeyProps) {
   const isActive = active != null && active === cell.id;
   const isExpected = expected != null && expected === cell.id;
   const heat = aggregateHeat(cell.id, stats);
   const heatStyle = !isActive && heat.bg ? { backgroundColor: heat.bg } : undefined;
 
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isActive || !ref.current) return;
+    const el = ref.current;
+    el.classList.remove('key-smash');
+    void el.offsetWidth; // force reflow to restart animation
+    el.classList.add('key-smash');
+    spawnDebris(el);
+  }, [isActive, lastKeyAt]);
+
   return (
     <div
+      ref={ref}
       style={{ flex: cell.flex ?? 1, ...heatStyle }}
       className={cn(
         'flex h-9 items-center justify-center rounded border font-mono text-[11px] uppercase',
