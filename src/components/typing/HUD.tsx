@@ -1,30 +1,16 @@
-import { memo, useEffect, useState } from 'react';
+import { memo } from 'react';
 import { useEngineStore } from '@/engine/store';
+import { useEngineElapsedMs } from '@/hooks/useEngineElapsedMs';
 import { computeAccuracy, computeWpm } from '@/engine/metrics';
 import { cn } from '@/lib/utils';
 
-/**
- * Live WPM / accuracy / timer. Uses its own setInterval for the elapsed
- * clock so the rest of the UI doesn't re-render on every tick.
- */
 function HUDImpl() {
   const status = useEngineStore((s) => s.status);
-  const startedAt = useEngineStore((s) => s.startedAt);
-  const finishedAt = useEngineStore((s) => s.finishedAt);
   const charsCorrect = useEngineStore((s) => s.charsCorrect);
   const charsTyped = useEngineStore((s) => s.charsTyped);
   const errors = useEngineStore((s) => s.errors);
 
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (status !== 'running') return;
-    const id = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(id);
-  }, [status]);
-
-  const endTime = status === 'finished' ? (finishedAt ?? now) : now;
-  const elapsedMs = startedAt ? Math.max(0, endTime - startedAt) : 0;
+  const elapsedMs = useEngineElapsedMs();
   const wpm = computeWpm(charsCorrect, elapsedMs);
   const accuracy = computeAccuracy(charsCorrect, charsTyped);
 

@@ -1,4 +1,4 @@
--- Typing Tutor v1 schema
+-- KeyBandit v1 schema
 -- Two monetization paths in mind: subscription tiers (profiles.plan) and
 -- display ads (gated client-side via lib/plan.ts can('ads.hidden')).
 -- See plan file: ~/.claude/plans/we-are-going-to-wise-lark.md

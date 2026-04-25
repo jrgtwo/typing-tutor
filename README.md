@@ -1,4 +1,4 @@
-# Typing Tutor
+# KeyBandit
 
 A reluctantly encouraging typing speed gauge. A sarcastic raccoon will, on
 occasion, applaud you. Probably.
@@ -7,7 +7,7 @@ occasion, applaud you. Probably.
 
 ## What it is
 
-Typing Tutor is a practice app for people who'd rather type real writing
+KeyBandit is a practice app for people who'd rather type real writing
 than the same 200 random English words on a loop. Passages are short
 pieces of prose or code — a poem, a workshop proverb, a fizzbuzz — and
 the app judges your speed and accuracy with gentle contempt.

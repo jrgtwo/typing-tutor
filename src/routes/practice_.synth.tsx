@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useEngineStore } from '@/engine/store';
 import { computeAccuracy, computeWpm } from '@/engine/metrics';
 import { usePracticeSession } from '@/hooks/usePracticeSession';
+import { useEngineElapsedMs } from '@/hooks/useEngineElapsedMs';
 import { useCaretScroll } from '@/hooks/useCaretScroll';
 import { DesignNav } from '@/components/DesignNav';
 import { RaccoonCameos } from '@/components/mascot/RaccoonCameos';
 import { OnScreenKeyboard } from '@/components/typing/OnScreenKeyboard';
+import { BetweenSessionsAd } from '@/components/ads/BetweenSessionsAd';
 import { cn } from '@/lib/utils';
 
 export const Route = createFileRoute('/practice_/synth')({
@@ -134,6 +135,8 @@ function SynthPractice() {
 
         <SynthFooter onNext={next} onReset={reset} />
 
+        <BetweenSessionsAd />
+
         <section className="mt-10">
           <p
             className="mb-2 text-[10px] uppercase tracking-[0.4em] text-[#7cf3ff]"
@@ -245,19 +248,10 @@ function SynthSurface() {
 
 function EqBars({ side }: { side: 'left' | 'right' }) {
   const status = useEngineStore((s) => s.status);
-  const startedAt = useEngineStore((s) => s.startedAt);
-  const finishedAt = useEngineStore((s) => s.finishedAt);
   const charsCorrect = useEngineStore((s) => s.charsCorrect);
-  const [tick, setTick] = useState(0);
 
-  useEffect(() => {
-    if (status !== 'running') return;
-    const id = setInterval(() => setTick((t) => t + 1), 140);
-    return () => clearInterval(id);
-  }, [status]);
-
-  const end = status === 'finished' ? (finishedAt ?? Date.now()) : Date.now();
-  const elapsed = startedAt ? Math.max(0, end - startedAt) : 0;
+  const elapsed = useEngineElapsedMs(140);
+  const tick = Math.floor(elapsed / 140);
   const wpm = computeWpm(charsCorrect, elapsed);
 
   // deterministic pseudo-random eq dance driven by wpm + tick + side
@@ -289,22 +283,11 @@ function EqBars({ side }: { side: 'left' | 'right' }) {
 }
 
 function SynthScoreboard() {
-  const status = useEngineStore((s) => s.status);
-  const startedAt = useEngineStore((s) => s.startedAt);
-  const finishedAt = useEngineStore((s) => s.finishedAt);
   const charsCorrect = useEngineStore((s) => s.charsCorrect);
   const charsTyped = useEngineStore((s) => s.charsTyped);
   const errors = useEngineStore((s) => s.errors);
 
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (status !== 'running') return;
-    const id = setInterval(() => setNow(Date.now()), 200);
-    return () => clearInterval(id);
-  }, [status]);
-
-  const end = status === 'finished' ? (finishedAt ?? now) : now;
-  const elapsed = startedAt ? Math.max(0, end - startedAt) : 0;
+  const elapsed = useEngineElapsedMs(200);
   const wpm = computeWpm(charsCorrect, elapsed);
   const acc = computeAccuracy(charsCorrect, charsTyped);
 

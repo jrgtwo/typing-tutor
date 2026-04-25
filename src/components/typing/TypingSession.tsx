@@ -1,5 +1,6 @@
 import { useEngineStore } from '@/engine/store';
 import { CRTFrame } from '@/components/chrome/CRTFrame';
+import { BetweenSessionsAd } from '@/components/ads/BetweenSessionsAd';
 import { TypingSurface } from './TypingSurface';
 import { HUD } from './HUD';
 import { OnScreenKeyboard } from './OnScreenKeyboard';
@@ -27,6 +28,7 @@ export function TypingSession({ onReset, onNext }: TypingSessionProps) {
       </CRTFrame>
       <OnScreenKeyboard />
       {status === 'finished' && <ResultsPanel onReset={onReset} onNext={onNext} />}
+      <BetweenSessionsAd />
       {status !== 'finished' && (
         <p className="text-center font-mono text-xs text-[var(--color-ink-soft)]">
           Just start typing. {modeId === 'code' ? 'Enter auto-skips indentation.' : 'Press Esc to focus the page if needed.'}

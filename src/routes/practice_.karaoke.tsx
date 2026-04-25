@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useEngineStore } from '@/engine/store';
 import { computeAccuracy, computeWpm } from '@/engine/metrics';
 import { usePracticeSession } from '@/hooks/usePracticeSession';
+import { useEngineElapsedMs } from '@/hooks/useEngineElapsedMs';
 import { DesignNav } from '@/components/DesignNav';
 import { RaccoonCameos } from '@/components/mascot/RaccoonCameos';
 import { OnScreenKeyboard } from '@/components/typing/OnScreenKeyboard';
+import { BetweenSessionsAd } from '@/components/ads/BetweenSessionsAd';
 import { cn } from '@/lib/utils';
 
 export const Route = createFileRoute('/practice_/karaoke')({
@@ -110,6 +112,7 @@ function KaraokePractice() {
             })}
           </div>
           <KaraokeFooter onNext={next} onReset={reset} />
+          <BetweenSessionsAd />
           <div className="mt-4 opacity-40 transition-opacity duration-300 hover:opacity-100" style={KARAOKE_KBD}>
             <OnScreenKeyboard />
           </div>
@@ -292,21 +295,10 @@ function StageLine({
 }
 
 function ScoreChip({ label, sampler, color }: { label: string; sampler: 'wpm' | 'acc'; color: string }) {
-  const status = useEngineStore((s) => s.status);
-  const startedAt = useEngineStore((s) => s.startedAt);
-  const finishedAt = useEngineStore((s) => s.finishedAt);
   const charsCorrect = useEngineStore((s) => s.charsCorrect);
   const charsTyped = useEngineStore((s) => s.charsTyped);
 
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (status !== 'running') return;
-    const id = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(id);
-  }, [status]);
-
-  const end = status === 'finished' ? (finishedAt ?? now) : now;
-  const elapsed = startedAt ? Math.max(0, end - startedAt) : 0;
+  const elapsed = useEngineElapsedMs();
   const value = sampler === 'wpm'
     ? Math.round(computeWpm(charsCorrect, elapsed)).toString()
     : `${(computeAccuracy(charsCorrect, charsTyped) * 100).toFixed(0)}%`;

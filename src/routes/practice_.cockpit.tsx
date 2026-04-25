@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useEngineStore } from '@/engine/store';
 import { computeAccuracy, computeWpm } from '@/engine/metrics';
 import { usePracticeSession } from '@/hooks/usePracticeSession';
+import { useEngineElapsedMs } from '@/hooks/useEngineElapsedMs';
 import { useCaretScroll } from '@/hooks/useCaretScroll';
 import { DesignNav } from '@/components/DesignNav';
 import { RaccoonCameos } from '@/components/mascot/RaccoonCameos';
 import { OnScreenKeyboard } from '@/components/typing/OnScreenKeyboard';
+import { BetweenSessionsAd } from '@/components/ads/BetweenSessionsAd';
 import { cn } from '@/lib/utils';
 
 export const Route = createFileRoute('/practice_/cockpit')({
@@ -136,6 +137,8 @@ function CockpitPractice() {
         <CockpitScoreboard />
 
         <CockpitFooter onNext={next} onReset={reset} />
+
+        <BetweenSessionsAd />
 
         <section className="mt-8">
           <p
@@ -294,21 +297,10 @@ function ProgressPill() {
 }
 
 function Gauge({ label, sampler, ring }: { label: string; sampler: 'wpm' | 'acc'; ring: string }) {
-  const status = useEngineStore((s) => s.status);
-  const startedAt = useEngineStore((s) => s.startedAt);
-  const finishedAt = useEngineStore((s) => s.finishedAt);
   const charsCorrect = useEngineStore((s) => s.charsCorrect);
   const charsTyped = useEngineStore((s) => s.charsTyped);
 
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (status !== 'running') return;
-    const id = setInterval(() => setNow(Date.now()), 200);
-    return () => clearInterval(id);
-  }, [status]);
-
-  const end = status === 'finished' ? (finishedAt ?? now) : now;
-  const elapsed = startedAt ? Math.max(0, end - startedAt) : 0;
+  const elapsed = useEngineElapsedMs(200);
   const raw = sampler === 'wpm' ? computeWpm(charsCorrect, elapsed) : computeAccuracy(charsCorrect, charsTyped) * 100;
   const pct = sampler === 'wpm' ? Math.min(100, (raw / 120) * 100) : raw;
   const value = sampler === 'wpm' ? Math.round(raw).toString() : `${raw.toFixed(0)}%`;
@@ -375,17 +367,7 @@ function polar(cx: number, cy: number, r: number, deg: number) {
 }
 
 function Altimeter() {
-  const status = useEngineStore((s) => s.status);
-  const startedAt = useEngineStore((s) => s.startedAt);
-  const finishedAt = useEngineStore((s) => s.finishedAt);
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (status !== 'running') return;
-    const id = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(id);
-  }, [status]);
-  const end = status === 'finished' ? (finishedAt ?? now) : now;
-  const elapsed = startedAt ? Math.max(0, end - startedAt) : 0;
+  const elapsed = useEngineElapsedMs();
   return (
     <div className="rounded border border-[#ffb347]/60 bg-[#110b04]/80 px-3 py-1.5 text-right font-mono" style={{ boxShadow: 'inset 0 0 12px rgba(255,179,71,0.15)' }}>
       <p className="text-[9px] uppercase tracking-[0.4em] text-[#ffb347]/70">elapsed</p>
@@ -397,22 +379,11 @@ function Altimeter() {
 }
 
 function CockpitScoreboard() {
-  const status = useEngineStore((s) => s.status);
-  const startedAt = useEngineStore((s) => s.startedAt);
-  const finishedAt = useEngineStore((s) => s.finishedAt);
   const charsCorrect = useEngineStore((s) => s.charsCorrect);
   const charsTyped = useEngineStore((s) => s.charsTyped);
   const errors = useEngineStore((s) => s.errors);
 
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (status !== 'running') return;
-    const id = setInterval(() => setNow(Date.now()), 200);
-    return () => clearInterval(id);
-  }, [status]);
-
-  const end = status === 'finished' ? (finishedAt ?? now) : now;
-  const elapsed = startedAt ? Math.max(0, end - startedAt) : 0;
+  const elapsed = useEngineElapsedMs(200);
   const wpm = computeWpm(charsCorrect, elapsed);
   const acc = computeAccuracy(charsCorrect, charsTyped);
 

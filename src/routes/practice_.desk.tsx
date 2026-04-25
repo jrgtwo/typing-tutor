@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useEngineStore } from '@/engine/store';
 import { computeAccuracy, computeWpm } from '@/engine/metrics';
 import { usePracticeSession } from '@/hooks/usePracticeSession';
+import { useEngineElapsedMs } from '@/hooks/useEngineElapsedMs';
 import { useCaretScroll } from '@/hooks/useCaretScroll';
 import { DesignNav } from '@/components/DesignNav';
 import { RaccoonCameos } from '@/components/mascot/RaccoonCameos';
 import { OnScreenKeyboard } from '@/components/typing/OnScreenKeyboard';
+import { BetweenSessionsAd } from '@/components/ads/BetweenSessionsAd';
 import { cn } from '@/lib/utils';
 
 export const Route = createFileRoute('/practice_/desk')({
@@ -148,6 +149,8 @@ function DeskPractice() {
         {/* footer — actions */}
         <div className="relative px-6 pb-6 pt-2">
           <DeskFooter onNext={next} onReset={reset} />
+
+          <BetweenSessionsAd />
 
           {/* keyboard — the physical object */}
           <div className="mx-auto mt-6 max-w-3xl">
@@ -306,22 +309,11 @@ function Sticky({
 }
 
 function StickyStat({ sampler, label, big }: { sampler: 'wpm' | 'acc' | 'err'; label: string; big?: boolean }) {
-  const status = useEngineStore((s) => s.status);
-  const startedAt = useEngineStore((s) => s.startedAt);
-  const finishedAt = useEngineStore((s) => s.finishedAt);
   const charsCorrect = useEngineStore((s) => s.charsCorrect);
   const charsTyped = useEngineStore((s) => s.charsTyped);
   const errors = useEngineStore((s) => s.errors);
 
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (status !== 'running') return;
-    const id = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(id);
-  }, [status]);
-
-  const end = status === 'finished' ? (finishedAt ?? now) : now;
-  const elapsed = startedAt ? Math.max(0, end - startedAt) : 0;
+  const elapsed = useEngineElapsedMs();
 
   const value = sampler === 'wpm'
     ? Math.round(computeWpm(charsCorrect, elapsed)).toString()
@@ -438,18 +430,7 @@ function Calendar({ total, index }: { total: number; index: number }) {
 }
 
 function Pocketwatch() {
-  const status = useEngineStore((s) => s.status);
-  const startedAt = useEngineStore((s) => s.startedAt);
-  const finishedAt = useEngineStore((s) => s.finishedAt);
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (status !== 'running') return;
-    const id = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(id);
-  }, [status]);
-
-  const end = status === 'finished' ? (finishedAt ?? now) : now;
-  const elapsed = startedAt ? Math.max(0, end - startedAt) : 0;
+  const elapsed = useEngineElapsedMs();
   const secs = Math.floor(elapsed / 1000);
   const angle = (secs % 60) * 6;
 

@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useEngineStore } from '@/engine/store';
 import { computeAccuracy, computeWpm } from '@/engine/metrics';
 import { usePracticeSession } from '@/hooks/usePracticeSession';
+import { useEngineElapsedMs } from '@/hooks/useEngineElapsedMs';
 import { useCaretScroll } from '@/hooks/useCaretScroll';
 import { DesignNav } from '@/components/DesignNav';
 import { RaccoonCameos } from '@/components/mascot/RaccoonCameos';
 import { OnScreenKeyboard } from '@/components/typing/OnScreenKeyboard';
+import { BetweenSessionsAd } from '@/components/ads/BetweenSessionsAd';
 import { cn } from '@/lib/utils';
 
 const FOCUS_KBD: React.CSSProperties = {
@@ -60,6 +61,8 @@ function FocusPractice() {
         <FocusSurface />
         <FocusFooter onNext={next} onReset={reset} />
 
+        <BetweenSessionsAd />
+
         <div className="mt-12 opacity-60 transition-opacity duration-500 hover:opacity-100" style={FOCUS_KBD}>
           <OnScreenKeyboard />
         </div>
@@ -90,21 +93,10 @@ function FocusPractice() {
 }
 
 function FocusHud() {
-  const status = useEngineStore((s) => s.status);
-  const startedAt = useEngineStore((s) => s.startedAt);
-  const finishedAt = useEngineStore((s) => s.finishedAt);
   const charsCorrect = useEngineStore((s) => s.charsCorrect);
   const charsTyped = useEngineStore((s) => s.charsTyped);
 
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (status !== 'running') return;
-    const id = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(id);
-  }, [status]);
-
-  const end = status === 'finished' ? (finishedAt ?? now) : now;
-  const elapsed = startedAt ? Math.max(0, end - startedAt) : 0;
+  const elapsed = useEngineElapsedMs(500);
   const wpm = computeWpm(charsCorrect, elapsed);
   const acc = computeAccuracy(charsCorrect, charsTyped);
 

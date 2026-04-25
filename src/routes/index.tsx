@@ -12,7 +12,7 @@ function Landing() {
       <PaperPanel className="space-y-8 p-10">
         <header className="space-y-3">
           <p className="font-mono text-xs uppercase tracking-[0.3em] text-[var(--color-ink-soft)]">
-            Typing Tutor — beta
+            KeyBandit — beta
           </p>
           <h1 className="font-serif text-5xl leading-tight text-[var(--color-ink)]">
             A reluctantly encouraging

@@ -1,4 +1,4 @@
-# Typing Tutor — Progress & Plan Snapshot
+# KeyBandit — Progress & Plan Snapshot
 
 Last updated during the initial scaffolding session. Pick this up next time
 to know where we left off without re-reading the original plan.
