@@ -9,7 +9,7 @@ export interface SamplePassage {
 }
 
 /**
- * Local fallback passages so the typing engine works before Supabase content
+ * Local fallback passages so the typing engine works before remote content
  * is wired. Once `content_items` is queryable, this file can shrink to one
  * placeholder used during dev / when the network is unreachable.
  */

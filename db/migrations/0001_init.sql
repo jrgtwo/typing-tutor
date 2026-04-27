@@ -1,46 +1,22 @@
--- KeyBandit v1 schema
+-- KeyBandit v1 schema (Neon)
 -- Two monetization paths in mind: subscription tiers (profiles.plan) and
 -- display ads (gated client-side via lib/plan.ts can('ads.hidden')).
--- See plan file: ~/.claude/plans/we-are-going-to-wise-lark.md
+--
+-- Authorization is enforced in serverless API routes via WHERE user_id = $1
+-- against the validated Stack Auth session. RLS is intentionally off; can be
+-- re-enabled later as defense-in-depth.
 
 -- ── profiles ──────────────────────────────────────────────────────────────
+-- Stack Auth syncs users into neon_auth.users_sync(id text). Profiles are
+-- lazily inserted from API routes on first authenticated request.
 create table if not exists public.profiles (
-  id uuid primary key references auth.users on delete cascade,
+  id text primary key references neon_auth.users_sync(id) on delete cascade,
   display_name text,
   plan text not null default 'free',
   plan_expires_at timestamptz,
   preferences jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
-
-alter table public.profiles enable row level security;
-
-create policy "profiles: read own"
-  on public.profiles for select
-  using (id = auth.uid());
-
-create policy "profiles: update own (excluding plan)"
-  on public.profiles for update
-  using (id = auth.uid())
-  with check (id = auth.uid() and plan = (select plan from public.profiles where id = auth.uid()));
-
--- Auto-create a profile row when a user signs up.
-create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  insert into public.profiles (id) values (new.id) on conflict do nothing;
-  return new;
-end;
-$$;
-
-drop trigger if exists on_auth_user_created on auth.users;
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
 
 
 -- ── content_items ─────────────────────────────────────────────────────────
@@ -63,17 +39,11 @@ create index if not exists content_items_active_type_diff_idx
 create index if not exists content_items_lang_idx
   on public.content_items (language) where type = 'code';
 
-alter table public.content_items enable row level security;
-
-create policy "content_items: public read active"
-  on public.content_items for select
-  using (is_active = true);
-
 
 -- ── sessions ──────────────────────────────────────────────────────────────
 create table if not exists public.sessions (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users on delete cascade,
+  user_id text not null references neon_auth.users_sync(id) on delete cascade,
   content_item_id uuid references public.content_items on delete set null,
   mode text not null,
   started_at timestamptz not null,
@@ -90,19 +60,10 @@ create table if not exists public.sessions (
 create index if not exists sessions_user_finished_idx
   on public.sessions (user_id, finished_at desc);
 
-alter table public.sessions enable row level security;
-
-create policy "sessions: own select" on public.sessions
-  for select using (user_id = auth.uid());
-create policy "sessions: own insert" on public.sessions
-  for insert with check (user_id = auth.uid());
-create policy "sessions: own update" on public.sessions
-  for update using (user_id = auth.uid());
-
 
 -- ── key_stats_user (lifetime aggregate per user per key) ──────────────────
 create table if not exists public.key_stats_user (
-  user_id uuid not null references auth.users on delete cascade,
+  user_id text not null references neon_auth.users_sync(id) on delete cascade,
   key text not null,
   presses bigint not null default 0,
   errors bigint not null default 0,
@@ -110,15 +71,6 @@ create table if not exists public.key_stats_user (
   updated_at timestamptz not null default now(),
   primary key (user_id, key)
 );
-
-alter table public.key_stats_user enable row level security;
-
-create policy "key_stats_user: own select" on public.key_stats_user
-  for select using (user_id = auth.uid());
-create policy "key_stats_user: own upsert" on public.key_stats_user
-  for insert with check (user_id = auth.uid());
-create policy "key_stats_user: own update" on public.key_stats_user
-  for update using (user_id = auth.uid());
 
 
 -- ── key_stats_session (per-session per-key) ───────────────────────────────
@@ -131,17 +83,6 @@ create table if not exists public.key_stats_session (
   primary key (session_id, key)
 );
 
-alter table public.key_stats_session enable row level security;
-
-create policy "key_stats_session: own select" on public.key_stats_session
-  for select using (
-    exists (select 1 from public.sessions s where s.id = session_id and s.user_id = auth.uid())
-  );
-create policy "key_stats_session: own insert" on public.key_stats_session
-  for insert with check (
-    exists (select 1 from public.sessions s where s.id = session_id and s.user_id = auth.uid())
-  );
-
 
 -- ── keystrokes (full event log; not written in v1, schema present) ────────
 create table if not exists public.keystrokes (
@@ -153,14 +94,3 @@ create table if not exists public.keystrokes (
   was_correct boolean not null,
   primary key (session_id, seq)
 );
-
-alter table public.keystrokes enable row level security;
-
-create policy "keystrokes: own select" on public.keystrokes
-  for select using (
-    exists (select 1 from public.sessions s where s.id = session_id and s.user_id = auth.uid())
-  );
-create policy "keystrokes: own insert" on public.keystrokes
-  for insert with check (
-    exists (select 1 from public.sessions s where s.id = session_id and s.user_id = auth.uid())
-  );

@@ -126,3 +126,78 @@ No change for v1 — TanStack Query is already installed but not yet wired. When
 5. **Authz guard** — `POST /api/sessions` without auth → 401. With auth, returns a new `sessions.id`.
 6. **Env hygiene** — grep for `SUPABASE`, `supabase` across `src/` + `api/` + `db/` — should return zero hits.
 7. **Deploy preview** — push to a Vercel preview, verify the Stack Auth OAuth redirect URL is whitelisted in the Stack dashboard for the preview domain.
+
+## Manual steps remaining
+
+The codebase migration is done (deps swapped, auth layer rewritten, schema ported, API routes scaffolded, build + typecheck green). Everything below requires accounts/credentials/external dashboards and must be done by hand.
+
+### 1. Provision Neon
+
+- [ ] Create a Neon project at https://console.neon.tech.
+- [ ] Enable **Neon Auth** on the project (this provisions the `neon_auth` schema and the `neon_auth.users_sync` table that our migration FKs into). Without this, `db/migrations/0001_init.sql` will fail.
+- [ ] Copy the **pooled** connection string → save as `DATABASE_URL` (use the pooler URL, not the direct one — the `@neondatabase/serverless` HTTP driver expects it).
+
+### 2. Provision Stack Auth
+
+Neon Auth uses Stack Auth under the hood. When you enabled Neon Auth in step 1, a Stack project was auto-created and linked.
+
+- [ ] Open the Stack dashboard from the Neon Auth tab (or sign in at https://app.stack-auth.com).
+- [ ] Grab three keys from project settings:
+  - `VITE_STACK_PROJECT_ID` (browser-safe project ID)
+  - `VITE_STACK_PUBLISHABLE_CLIENT_KEY` (browser-safe)
+  - `STACK_SECRET_SERVER_KEY` (**server only** — never `VITE_`-prefixed, never committed)
+- [ ] In Stack dashboard → **Auth Methods**, enable **Google OAuth** and **Magic Link**.
+- [ ] In Stack dashboard → **Domains & Handlers**, whitelist redirect URLs:
+  - `http://localhost:3000/handler/*` (Vercel dev default port)
+  - `http://localhost:5173/handler/*` (Vite dev default port, if used)
+  - `https://<your-vercel-preview>.vercel.app/handler/*`
+  - production domain once chosen
+- [ ] For Google OAuth specifically: either use Stack's shared dev OAuth credentials (fine for prototyping) or create your own Google Cloud OAuth client and paste its client ID + secret into the Stack dashboard before going to production.
+
+### 3. Apply schema + seed to Neon
+
+Once `DATABASE_URL` is set locally:
+
+```bash
+psql "$DATABASE_URL" -f db/migrations/0001_init.sql
+psql "$DATABASE_URL" -f db/seed.sql
+```
+
+- [ ] Confirm `select count(*) from content_items;` returns 6.
+- [ ] Confirm `\dt public.*` shows `profiles`, `sessions`, `key_stats_user`, `key_stats_session`, `keystrokes`, `content_items`.
+
+### 4. Local env file
+
+- [ ] Copy `.env.example` → `.env.local` (or `.env`) and fill in all four values from steps 1–2.
+- [ ] Confirm `.env.local` is gitignored (it is by default with Vite).
+
+### 5. Run locally with Vercel dev
+
+The serverless `api/*` routes only execute under Vercel's dev server, not plain Vite.
+
+- [ ] `pnpm dlx vercel link` once to associate the directory with a Vercel project (or create a new one).
+- [ ] `pnpm dlx vercel env pull .env.local` to sync env vars from the Vercel dashboard if you'd rather store secrets there.
+- [ ] `pnpm dlx vercel dev` — serves the Vite app and `api/` together on one port.
+
+### 6. Smoke tests (manual, against running dev server)
+
+- [ ] **Public read** — `curl http://localhost:3000/api/content` → 200, returns 6 items.
+- [ ] **Authz guard** — `curl -X POST http://localhost:3000/api/sessions` (no cookie) → 401.
+- [ ] **Sign in** — open the app, hit a flow that calls `signInWithGoogle()` / `signInWithMagicLink()`, complete the redirect, confirm landing on `/dashboard`.
+- [ ] **Lazy profile insert** — after sign-in, `curl --cookie-jar` against `/api/profile` → 200 with a row; verify `select * from profiles;` in Neon shows the new ID.
+- [ ] **Sign out** — confirm `useSession()` flips back to null and cookies are cleared.
+
+### 7. Production deploy
+
+- [ ] Push the branch and open a Vercel preview deployment.
+- [ ] In Vercel project settings → **Environment Variables**, add all four env vars for both **Preview** and **Production** environments.
+- [ ] Add the preview + production domains to the Stack Auth handler whitelist (step 2).
+- [ ] Re-run smoke tests against the preview URL.
+- [ ] Promote to production.
+
+### 8. Cleanup (after confirmed working)
+
+- [ ] Pause/delete the old Supabase project.
+- [ ] Rotate any Supabase keys that were committed to history (none expected — `.env.example` only had blank placeholders).
+- [ ] Delete this doc, or move it to `docs/archive/`.
+

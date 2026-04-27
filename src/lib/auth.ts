@@ -1,58 +1,38 @@
-import { useEffect, useState } from 'react';
-import type { Session } from '@supabase/supabase-js';
+import { useUser as useStackUser } from '@stackframe/react';
 import { redirect } from '@tanstack/react-router';
-import { supabase } from './supabase';
+import { stackClientApp } from './stack';
 
 export function useSession() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      setSession(data.session);
-      setLoading(false);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next);
-    });
-    return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
-    };
-  }, []);
-
-  return { session, loading };
+  const user = useStackUser();
+  const loading = user === undefined;
+  return { session: user ?? null, loading };
 }
 
-export async function getSession() {
-  const { data } = await supabase.auth.getSession();
-  return data.session;
+export async function getCurrentUser() {
+  return stackClientApp.getUser();
 }
 
 export async function requireAuth() {
-  const session = await getSession();
-  if (!session) {
+  const user = await getCurrentUser();
+  if (!user) {
     throw redirect({ to: '/' });
   }
-  return session;
+  return user;
 }
 
 export async function signInWithGoogle() {
-  return supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: { redirectTo: `${window.location.origin}/auth/callback` },
-  });
+  return stackClientApp.signInWithOAuth('google');
 }
 
 export async function signInWithMagicLink(email: string) {
-  return supabase.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+  return stackClientApp.sendMagicLinkEmail(email, {
+    callbackUrl: `${window.location.origin}/handler/magic-link-callback`,
   });
 }
 
 export async function signOut() {
-  return supabase.auth.signOut();
+  const user = await stackClientApp.getUser();
+  if (user) {
+    await user.signOut();
+  }
 }

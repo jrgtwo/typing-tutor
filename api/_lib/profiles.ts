@@ -1,0 +1,5 @@
+import { sql } from './db';
+
+export async function ensureProfile(userId: string): Promise<void> {
+  await sql`insert into profiles (id) values (${userId}) on conflict (id) do nothing`;
+}
