@@ -10,7 +10,6 @@ import '@fontsource/ibm-plex-mono/700.css';
 import '@fontsource/ibm-plex-serif/400.css';
 import '@fontsource/ibm-plex-serif/700.css';
 
-import '@neondatabase/neon-js/ui/css';
 import './styles/globals.css';
 import { authClient } from './lib/auth-client';
 import { routeTree } from './routeTree.gen';

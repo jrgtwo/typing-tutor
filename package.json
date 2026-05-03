@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:api": "pnpm dlx vercel dev",
     "build": "vite build && tsc -b --noEmit",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
