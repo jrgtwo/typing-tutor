@@ -145,80 +145,11 @@ No change for v1 — TanStack Query is already installed but not yet wired. When
 6. **Env hygiene** — grep for `SUPABASE`, `supabase`, `stackframe`, `Stack` across `src/` + `api/` + `db/` — should return zero hits.
 7. **Deploy preview** — push to a Vercel preview, verify the Google OAuth redirect URL is whitelisted in the Neon Console for the preview domain.
 
-## Manual steps remaining
+## Manual steps — done
 
-The codebase migration is partially done — the Supabase → Neon-via-Stack-Auth pass shipped (deps swapped, auth layer rewritten against Stack, schema ported, API routes scaffolded, build + typecheck green). **The Stack Auth code now needs to be replaced with Better Auth** before any of the manual steps below can succeed; see "Code changes still needed" at the bottom of this doc.
+The original step-by-step checklist (provision Neon, configure Better Auth providers, apply schema, run locally with Vercel dev, smoke tests, deploy) was followed end-to-end and is now complete. **Production lives at https://key-bandit.vercel.app.** For the historical record of each step (including the issues encountered and how they were resolved), see [`neon-provisioning-checklist.md`](./neon-provisioning-checklist.md).
 
-Everything below requires accounts/credentials/external dashboards and must be done by hand.
-
-### 1. Provision Neon
-
-- [ ] Create a Neon project at https://console.neon.tech.
-- [ ] Enable **Neon Auth** on the project. On a fresh project this provisions the Better Auth-backed integration and creates the user table inside the `neon_auth` schema.
-- [ ] Confirm the exact name of the user table that Neon Auth created in `neon_auth` (Console → SQL Editor → `\dt neon_auth.*`). Update `db/migrations/0001_init.sql` to FK against it.
-- [ ] Copy the **pooled** connection string → save as `DATABASE_URL` (use the pooler URL, not the direct one — the `@neondatabase/serverless` HTTP driver expects it).
-- [ ] Copy the **Neon Auth URL** from Console → Auth → Configuration → save as `VITE_NEON_AUTH_URL`.
-
-### 2. Configure Neon Auth (Better Auth)
-
-Better Auth is configured through the **Neon Console → Auth** tab — there is no separate Stack Auth dashboard anymore.
-
-- [ ] In Neon Console → Auth → **Providers**, enable **Google** and **Magic Link** (email).
-- [ ] For Google specifically: either use Neon's shared dev OAuth credentials (fine for prototyping) or create your own Google Cloud OAuth client and paste its client ID + secret into the Neon Auth provider config before going to production.
-- [ ] In Neon Console → Auth → **Trusted Origins / Redirect URLs**, whitelist:
-  - `http://localhost:3000` (Vercel dev default port)
-  - `http://localhost:5173` (Vite dev default port, if used)
-  - `https://<your-vercel-preview>.vercel.app`
-  - production domain once chosen
-
-### 3. Apply schema + seed to Neon
-
-Once `DATABASE_URL` is set locally:
-
-```bash
-psql "$DATABASE_URL" -f db/migrations/0001_init.sql
-psql "$DATABASE_URL" -f db/seed.sql
-```
-
-- [ ] Confirm `select count(*) from content_items;` returns 6.
-- [ ] Confirm `\dt public.*` shows `profiles`, `sessions`, `key_stats_user`, `key_stats_session`, `keystrokes`, `content_items`.
-
-### 4. Local env file
-
-- [ ] Copy `.env.example` → `.env.local` (or `.env`) and fill in:
-  - `VITE_NEON_AUTH_URL` (step 1)
-  - `DATABASE_URL` (step 1)
-- [ ] Confirm `.env.local` is gitignored (it is by default with Vite).
-
-### 5. Run locally with Vercel dev
-
-The serverless `api/*` routes only execute under Vercel's dev server, not plain Vite.
-
-- [ ] `pnpm dlx vercel link` once to associate the directory with a Vercel project (or create a new one).
-- [ ] `pnpm dlx vercel env pull .env.local` to sync env vars from the Vercel dashboard if you'd rather store secrets there.
-- [ ] `pnpm dlx vercel dev` — serves the Vite app and `api/` together on one port.
-
-### 6. Smoke tests (manual, against running dev server)
-
-- [ ] **Public read** — `curl http://localhost:3000/api/content` → 200, returns 6 items.
-- [ ] **Authz guard** — `curl -X POST http://localhost:3000/api/sessions` (no cookie) → 401.
-- [ ] **Sign in** — open the app at `/auth/sign-in`, complete Google or magic-link flow, confirm landing on `/dashboard`.
-- [ ] **Lazy profile insert** — after sign-in, `curl --cookie-jar` against `/api/profile` → 200 with a row; verify `select * from profiles;` in Neon shows the new ID.
-- [ ] **Sign out** — confirm `useSession()` flips back to null and cookies are cleared.
-
-### 7. Production deploy
-
-- [ ] Push the branch and open a Vercel preview deployment.
-- [ ] In Vercel project settings → **Environment Variables**, add `VITE_NEON_AUTH_URL` and `DATABASE_URL` for both **Preview** and **Production** environments.
-- [ ] Add the preview + production domains to the Neon Auth trusted-origin whitelist (step 2).
-- [ ] Re-run smoke tests against the preview URL.
-- [ ] Promote to production.
-
-### 8. Cleanup (after confirmed working)
-
-- [ ] Pause/delete the old Supabase project (if one was ever provisioned — likely none).
-- [ ] Rotate any Supabase keys that were committed to history (none expected — `.env.example` only had blank placeholders).
-- [ ] Delete this doc, or move it to `docs/archive/`.
+The only outstanding pre-launch item is **replacing Neon's shared Google OAuth credentials with our own Google Cloud OAuth client** so the consent screen shows KeyBandit branding instead of Neon's. See the checklist's "TODO before production launch" callout in §Step 2.
 
 ---
 

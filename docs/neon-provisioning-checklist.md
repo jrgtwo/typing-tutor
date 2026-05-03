@@ -2,8 +2,8 @@
 
 Step-by-step checklist for the manual provisioning work that completes the Supabase → Neon migration. Updated as we go. Code-side migration is already done — see `docs/migration-supabase-to-neon.md` for the architectural context.
 
-> **Status:** steps 1–7 complete; step 8 next.
-> **Last updated:** 2026-05-02
+> **Status:** ✅ migration complete. Production live at https://key-bandit.vercel.app. Step 9 (archive this doc) is optional.
+> **Last updated:** 2026-05-02 (end of migration session)
 
 ---
 
@@ -18,9 +18,9 @@ These get filled in during the steps and are referenced from other steps. Keep t
 | Neon Auth user `id` column type | ✅ `uuid` | `db/migrations/0001_init.sql` |
 | `VITE_NEON_AUTH_URL` | ✅ captured | `.env.local` + Vercel env |
 | `DATABASE_URL` (pooled) | ✅ captured | `.env.local` + Vercel env |
-| Vercel project name | ☐ | Vercel dashboard |
-| Vercel preview URL | ☐ | Neon Auth Trusted Origins |
-| Production domain | ☐ | Neon Auth Trusted Origins (later) |
+| Vercel project name | ✅ `key-bandit` (scope: `jrgtwos-projects`) | Vercel dashboard |
+| Vercel production URL | ✅ `https://key-bandit.vercel.app` | Neon Auth Trusted Origins |
+| Custom production domain | ☐ none yet | Neon Auth Trusted Origins (when chosen) |
 
 ---
 
@@ -110,8 +110,8 @@ Applied the table name + id type from step 1 to the schema file.
 - [x] Fixed `vercel.json` — removed invalid `runtime: "nodejs20.x"` (that's AWS Lambda format, not Vercel format). Vercel auto-detects Node for `.ts` files in `api/`.
 - [x] `pnpm dlx vercel dev` running on http://localhost:3000
 
-**Pending follow-ups (not blockers):**
-- GitHub repo connection failed during `vercel link` ("Failed to connect jrgtwo/typing-tutor"). Reconnect manually in Vercel Dashboard → Project → Settings → Git before step 8 so push-to-deploy works.
+**Notes:**
+- The initial `vercel link` failed to auto-connect GitHub ("Failed to connect jrgtwo/typing-tutor"). Resolved in step 8 by connecting manually via Vercel Dashboard → Project → Settings → Git. Push-to-deploy works now.
 
 ---
 
@@ -136,16 +136,28 @@ Applied the table name + id type from step 1 to the schema file.
 
 ---
 
-## Step 8 — Vercel production deploy
+## Step 8 — Vercel production deploy ✅
 
-- [ ] `git push origin <branch>` — Vercel auto-creates a preview deployment
-- [ ] Record the preview URL above
-- [ ] Vercel Dashboard → Settings → **Environment Variables** → add `VITE_NEON_AUTH_URL` and `DATABASE_URL` for **both Preview AND Production**
-- [ ] Neon Console → Auth → **Trusted Origins** → add the preview URL (and production domain if known)
-- [ ] Re-run smoke tests 7a–7e against the preview URL
-- [ ] Promote to production via Vercel dashboard
+Pushed straight to production via `main` (Vercel auto-deploys main → prod; pre-launch with no users so no preview-then-promote split needed).
 
-**Done when:** preview smoke tests pass and prod is live.
+- [x] **Connect GitHub** — done via Vercel dashboard (initial `vercel link` couldn't connect; reconnected manually in Settings → Git)
+- [x] **Add env vars** — `VITE_NEON_AUTH_URL` + `DATABASE_URL` set for Production + Preview via `vercel env add`
+- [x] **Add prod URL to Neon Trusted Origins** — `https://key-bandit.vercel.app` whitelisted
+- [x] **Smoke tests against production**
+  - `GET /api/content` → 200 with seeded items
+  - `POST /api/sessions` (no auth) → 401
+  - Google sign-in completes
+  - JWT bearer → `GET /api/profile` → 200 with profile row
+
+**Issues hit during deploy (all resolved):**
+1. **First deploy errored**: `tsc -b && vite build` ran `tsc` before the TanStack Router plugin generated `routeTree.gen.ts` (gitignored). Fixed by swapping order to `vite build && tsc -b --noEmit`. (Commit `a6e357f`.)
+2. **API functions 500'd at runtime**: Vercel's TS function runtime uses Node ESM module resolution, requiring explicit `.js` extensions on relative imports. Fixed by appending `.js` to all 13 relative imports in `api/*.ts`. (Commit `b4b27df`.)
+3. **`/auth/sign-in` returned Vercel 404**: Vite framework preset doesn't auto-add SPA fallback. Fixed by adding `rewrites: [{ source: "/((?!api/).*)", destination: "/" }]` to `vercel.json`. (Commit `8b68317`.)
+
+**Production URLs:**
+- `https://key-bandit.vercel.app` (primary)
+- `https://key-bandit-jrgtwos-projects.vercel.app`
+- `https://key-bandit-git-main-jrgtwos-projects.vercel.app`
 
 ---
 
