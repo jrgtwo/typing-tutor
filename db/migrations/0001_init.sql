@@ -3,14 +3,14 @@
 -- display ads (gated client-side via lib/plan.ts can('ads.hidden')).
 --
 -- Authorization is enforced in serverless API routes via WHERE user_id = $1
--- against the validated Stack Auth session. RLS is intentionally off; can be
--- re-enabled later as defense-in-depth.
+-- against the validated Neon Auth (Better Auth) session. RLS is intentionally
+-- off; can be re-enabled later as defense-in-depth.
 
 -- ── profiles ──────────────────────────────────────────────────────────────
--- Stack Auth syncs users into neon_auth.users_sync(id text). Profiles are
--- lazily inserted from API routes on first authenticated request.
+-- Neon Auth (Better Auth) writes users into neon_auth.user(id uuid). Profiles
+-- are lazily inserted from API routes on first authenticated request.
 create table if not exists public.profiles (
-  id text primary key references neon_auth.users_sync(id) on delete cascade,
+  id uuid primary key references neon_auth.user(id) on delete cascade,
   display_name text,
   plan text not null default 'free',
   plan_expires_at timestamptz,
@@ -43,7 +43,7 @@ create index if not exists content_items_lang_idx
 -- ── sessions ──────────────────────────────────────────────────────────────
 create table if not exists public.sessions (
   id uuid primary key default gen_random_uuid(),
-  user_id text not null references neon_auth.users_sync(id) on delete cascade,
+  user_id uuid not null references neon_auth.user(id) on delete cascade,
   content_item_id uuid references public.content_items on delete set null,
   mode text not null,
   started_at timestamptz not null,
@@ -63,7 +63,7 @@ create index if not exists sessions_user_finished_idx
 
 -- ── key_stats_user (lifetime aggregate per user per key) ──────────────────
 create table if not exists public.key_stats_user (
-  user_id text not null references neon_auth.users_sync(id) on delete cascade,
+  user_id uuid not null references neon_auth.user(id) on delete cascade,
   key text not null,
   presses bigint not null default 0,
   errors bigint not null default 0,

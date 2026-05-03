@@ -1,15 +1,18 @@
-import { useUser as useStackUser } from '@stackframe/react';
 import { redirect } from '@tanstack/react-router';
-import { stackClientApp } from './stack';
+import { authClient } from './auth-client';
+import { clearAuthTokenCache } from './api';
 
 export function useSession() {
-  const user = useStackUser();
-  const loading = user === undefined;
-  return { session: user ?? null, loading };
+  const result = authClient.useSession();
+  return {
+    session: result.data?.user ?? null,
+    loading: result.isPending,
+  };
 }
 
 export async function getCurrentUser() {
-  return stackClientApp.getUser();
+  const { data } = await authClient.getSession();
+  return data?.user ?? null;
 }
 
 export async function requireAuth() {
@@ -20,19 +23,7 @@ export async function requireAuth() {
   return user;
 }
 
-export async function signInWithGoogle() {
-  return stackClientApp.signInWithOAuth('google');
-}
-
-export async function signInWithMagicLink(email: string) {
-  return stackClientApp.sendMagicLinkEmail(email, {
-    callbackUrl: `${window.location.origin}/handler/magic-link-callback`,
-  });
-}
-
 export async function signOut() {
-  const user = await stackClientApp.getUser();
-  if (user) {
-    await user.signOut();
-  }
+  await authClient.signOut();
+  clearAuthTokenCache();
 }
