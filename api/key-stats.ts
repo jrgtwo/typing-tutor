@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { neon } from '@neondatabase/serverless';
-import { requireAuthedUser } from './_lib/auth';
+import { requireAuthedUser } from './_lib/auth.js';
 
 interface KeyStat {
   key: string;
