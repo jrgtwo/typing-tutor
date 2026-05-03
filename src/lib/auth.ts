@@ -27,3 +27,10 @@ export async function signOut() {
   await authClient.signOut();
   clearAuthTokenCache();
 }
+
+export async function signInWithGoogle(callbackURL?: string) {
+  await authClient.signIn.social({
+    provider: 'google',
+    callbackURL: callbackURL ?? window.location.href,
+  });
+}

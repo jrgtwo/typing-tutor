@@ -2,6 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { TypingSession } from '@/components/typing/TypingSession';
 import { DesignNav } from '@/components/DesignNav';
 import { RaccoonCameos } from '@/components/mascot/RaccoonCameos';
+import { SignInButton } from '@/components/auth/SignInButton';
 import { usePracticeSession } from '@/hooks/usePracticeSession';
 import { cn } from '@/lib/utils';
 
@@ -16,7 +17,7 @@ function Practice() {
     <main className="mx-auto max-w-4xl px-6 py-12">
       <DesignNav />
       <RaccoonCameos />
-      <header className="mb-8 flex items-baseline justify-between">
+      <header className="mb-8 flex items-center justify-between gap-4">
         <Link to="/" className="font-mono text-xs uppercase tracking-[0.3em] text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]">
           ← back
         </Link>
@@ -28,9 +29,12 @@ function Practice() {
             </span>
           )}
         </h1>
-        <span className="font-mono text-xs uppercase tracking-[0.25em] text-[var(--color-ink-soft)]">
-          {passage.modeId}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-xs uppercase tracking-[0.25em] text-[var(--color-ink-soft)]">
+            {passage.modeId}
+          </span>
+          <SignInButton />
+        </div>
       </header>
 
       <TypingSession onReset={reset} onNext={next} />

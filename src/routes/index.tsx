@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { PaperPanel } from '@/components/chrome/PaperPanel';
 import { AdSlot } from '@/components/ads/AdSlot';
+import { SignInButton } from '@/components/auth/SignInButton';
 
 export const Route = createFileRoute('/')({
   component: Landing,
@@ -11,9 +12,12 @@ function Landing() {
     <main className="mx-auto max-w-3xl px-6 py-16">
       <PaperPanel className="space-y-8 p-10">
         <header className="space-y-3">
-          <p className="font-mono text-xs uppercase tracking-[0.3em] text-[var(--color-ink-soft)]">
-            KeyBandit — beta
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="font-mono text-xs uppercase tracking-[0.3em] text-[var(--color-ink-soft)]">
+              KeyBandit — beta
+            </p>
+            <SignInButton />
+          </div>
           <h1 className="font-serif text-5xl leading-tight text-[var(--color-ink)]">
             A reluctantly encouraging
             <br />

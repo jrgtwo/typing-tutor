@@ -8,6 +8,7 @@ import { DesignNav } from '@/components/DesignNav';
 import { RaccoonCameos } from '@/components/mascot/RaccoonCameos';
 import { OnScreenKeyboard } from '@/components/typing/OnScreenKeyboard';
 import { BetweenSessionsAd } from '@/components/ads/BetweenSessionsAd';
+import { SignInButton } from '@/components/auth/SignInButton';
 import { cn } from '@/lib/utils';
 
 export const Route = createFileRoute('/practice_/desk')({
@@ -79,14 +80,17 @@ function DeskPractice() {
 
       <div className="relative z-10">
         {/* top bar floats like a little metal clip on the desk edge */}
-        <header className="flex items-center justify-between px-6 py-4">
+        <header className="flex items-center justify-between gap-3 px-6 py-4">
           <Link
             to="/"
             className="rounded-full bg-[#f1e4c5]/90 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.35em] text-[#2a1f12] shadow-md hover:bg-white"
           >
             ◂ leave desk
           </Link>
-          <IndexCard title={passage.title} source={passage.source} modeId={passage.modeId} />
+          <div className="flex items-center gap-3">
+            <SignInButton variant="desk" />
+            <IndexCard title={passage.title} source={passage.source} modeId={passage.modeId} />
+          </div>
         </header>
 
         {/* scatter zone — three columns: left sidebar, hero notepad, right sidebar.
