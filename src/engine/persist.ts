@@ -20,7 +20,7 @@ export async function persistFinishedSession(
 
   const startedAtIso = new Date(state.startedAt).toISOString();
   const finishedAtIso = new Date(state.finishedAt).toISOString();
-  const durationMs = state.finishedAt - state.startedAt;
+  const durationMs = Math.round(state.finishedAt - state.startedAt);
   const wpm = computeWpm(state.charsCorrect, durationMs);
   const accuracy = computeAccuracy(state.charsCorrect, state.charsTyped);
 
@@ -44,7 +44,7 @@ export async function persistFinishedSession(
       key,
       presses: s.presses,
       errors: s.errors,
-      totalLatencyMs: s.totalLatencyMs,
+      totalLatencyMs: Math.round(s.totalLatencyMs),
     }));
 
     const [patchRes, statsRes] = await Promise.all([

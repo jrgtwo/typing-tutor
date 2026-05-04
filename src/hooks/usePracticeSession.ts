@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEngineStore } from '@/engine/store';
 import { persistFinishedSession } from '@/engine/persist';
 import { useSession } from '@/lib/auth';
@@ -24,6 +25,7 @@ export function usePracticeSession() {
 
   const { session } = useSession();
   const isAuthed = Boolean(session);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     load(passage.modeId, passage.body);
@@ -55,8 +57,10 @@ export function usePracticeSession() {
     persistedRef.current = sessionToken.current;
     if (!isAuthed) return;
     const snapshot = useEngineStore.getState();
-    void persistFinishedSession(snapshot);
-  }, [status, isAuthed]);
+    void persistFinishedSession(snapshot).then(() => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    });
+  }, [status, isAuthed, queryClient]);
 
   const pickPassage = useCallback((i: number) => setIndex(i), []);
   const next = useCallback(
