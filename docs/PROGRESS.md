@@ -1,11 +1,13 @@
 # KeyBandit — Progress & Plan Snapshot
 
-Updated 2026-05-02 — Supabase → Neon migration is **complete and
-deployed to production** at https://key-bandit.vercel.app. Better Auth
-via Neon Auth (Google OAuth only), JWT bearer tokens server-side via
-JWKS verification, all `api/*` routes responding correctly. Pick this
-up next time to know where we left off without re-reading the original
-plan.
+Updated 2026-05-03 — Auth + persistence + dashboard are end-to-end wired
+locally and on production at https://key-bandit.vercel.app. Sign-in is
+a Google-only modal (no separate `/auth/sign-in` page in the user flow).
+Finished sessions persist `sessions` + `key_stats_user` + `key_stats_session`
+when signed in; anonymous runs stay local. `/dashboard` reads the data
+back as summary stats, a WPM line chart, a lifetime keyboard heatmap, and
+a recent-runs table. Pick this up next time to know where we left off
+without re-reading the original plan.
 
 The full v1 architecture plan is at `~/.claude/plans/we-are-going-to-wise-lark.md`
 and remains the source of truth for *why* things are shaped this way.
@@ -14,24 +16,34 @@ and remains the source of truth for *why* things are shaped this way.
 
 ## TL;DR — current state
 
-You can type. Open `/practice`, you get a hardcoded passage, the engine
-records WPM / accuracy / per-key stats, and the on-screen keyboard
-heatmaps your usage live. Auth + DB are wired and **work in production
-on Vercel** — Neon (Postgres) + Neon Auth (Better Auth) provisioned,
-schema + seed applied, Google sign-in flows end-to-end, lazy profile
-insert verified, JWT bearer auth on all `api/*` routes verified against
-the deployed URL.
+You can type, sign in, and see your runs.
 
-**No persistence is wired into the typing session yet** — the backend
-is ready but the engine doesn't call `/api/*` on session-finish.
+- Anonymous: `/practice/desk` (and the other variants) work — engine
+  runs locally, the on-screen keyboard heatmaps live usage, no API
+  calls. Nothing persists.
+- Signed in: a finished passage POSTs `/api/sessions`, PATCHes
+  `/api/sessions/[id]`, and POSTs `/api/key-stats` from
+  `src/engine/persist.ts`. Failures log but never throw.
+- `/dashboard`: TanStack Query hits `/api/dashboard` on every visit
+  (`refetchOnMount: 'always'` since the global default is `staleTime:
+  60_000`). Renders summary stats, an SVG WPM chart, a lifetime
+  `KeyHeatmap`, and a recent-runs table. Auth-gated in-component
+  (signed-out gets a sign-in CTA, not a redirect).
+
 Hardcoded passages still in use; `/api/content` not consumed yet.
 
 Routes:
-- `/` — marketing landing.
-- `/practice` — the typing session (HUD, surface, on-screen keyboard, results).
-- `/practice/<variant>` — alternate practice layouts (focus, terminal, arcade, etc.).
-- `/dashboard` — placeholder (auth-gated history view, not built).
-- `/auth/$pathname` — Neon Auth UI (sign-in, sign-out, account, etc.) via `<AuthView>`.
+- `/` — marketing landing. Sign-in pill in the header.
+- `/practice` — default warm-paper typing session. Sign-in pill in header.
+- `/practice/desk` — **the focus variant**. Sign-in pill in header.
+- `/practice/<other-variant>` — focus, terminal, arcade, etc. Lookbook only;
+  do **not** spend effort wiring features into them. They share
+  `usePracticeSession` so cross-cutting features inherit automatically
+  if any variant gets revived.
+- `/dashboard` — auth-gated runs ledger.
+- `/auth/$pathname` — Neon `<AuthView>` route. **No longer linked to from
+  the user flow** — sign-in is a modal triggered by `<SignInButton>`. The
+  route still exists in case a deep link is ever useful.
 
 ---
 
@@ -73,8 +85,20 @@ Routes:
 > See `docs/neon-provisioning-checklist.md` for the full step record
 > (and the lessons learned about Vercel + TanStack Router + ESM imports).
 
-Run `pnpm dev` from `/home/jonat/projects/typing-tutor` (port falls back
-to 5174 if 5173 is taken). `pnpm typecheck` and `pnpm build` both pass.
+Run `pnpm dev` for the Vite client only, or `pnpm dev:api` (which runs
+`pnpm dlx vercel dev`) when you need the `api/*` serverless routes too.
+`pnpm typecheck` and `pnpm build` both pass.
+
+**Local env files**: the project uses two:
+- `.env` — read by `vercel dev` for the Node serverless runtime. Must
+  contain `DATABASE_URL` and `VITE_NEON_AUTH_URL`.
+- `.env.local` — read by Vite for the client bundle. Same variables.
+
+Both are gitignored. `.env.development.local` is **not** read by Vercel
+CLI — that's a Next.js convention. If `vercel dev` complains about
+`VITE_NEON_AUTH_URL must be set in the server runtime`, copy `.env.local`
+to `.env`. Long term: rename the server var to `NEON_AUTH_URL` (no
+`VITE_` prefix) since that prefix is Vite client-side convention.
 
 ---
 
@@ -86,21 +110,30 @@ src/
 ├── styles/globals.css               # Tailwind v4 import, palette tokens, scanline + caret animation
 ├── routes/
 │   ├── __root.tsx                   # router root
-│   ├── index.tsx                    # ✅ marketing landing
-│   ├── practice.tsx                 # ✅ typing session + sample passage picker
-│   ├── dashboard.tsx                # 🟡 placeholder
-│   └── auth.$pathname.tsx           # ✅ Neon Auth UI (mounts <AuthView pathname={pathname} />)
+│   ├── index.tsx                    # ✅ marketing landing (sign-in pill in header)
+│   ├── practice.tsx                 # ✅ default warm-paper session (sign-in pill in header)
+│   ├── practice_.desk.tsx           # ✅ FOCUS variant — sign-in pill in header
+│   ├── practice_.<other>.tsx        # 🟡 lookbook only; do not feature-target
+│   ├── dashboard.tsx                # ✅ summary + WPM chart + heatmap + recent runs
+│   └── auth.$pathname.tsx           # ✅ Neon <AuthView> (route exists, not in user flow)
 ├── lib/
 │   ├── auth-client.ts               # ✅ Better Auth client (createAuthClient + BetterAuthReactAdapter)
-│   ├── auth.ts                      # ✅ useSession, requireAuth, sign-in helpers (Better Auth-backed)
+│   ├── auth.ts                      # ✅ useSession, requireAuth, signOut, signInWithGoogle
+│   ├── api.ts                       # ✅ apiFetch with cached JWT bearer
+│   ├── queries.ts                   # ✅ TanStack Query hooks (useDashboard so far)
 │   ├── plan.ts                      # ✅ can() capability gating (free/pro/power table)
 │   ├── device.ts                    # ✅ isDesktop()
 │   └── utils.ts                     # ✅ cn() for Tailwind class merging
+├── hooks/
+│   ├── usePracticeSession.ts        # ✅ shared hook — passage select, keydown bridge, persistence
+│   ├── useEngineElapsedMs.ts        # ✅ live elapsed-ms hook for HUDs
+│   └── useCaretScroll.ts            # ✅ keep caret in viewport
 ├── engine/
 │   ├── types.ts                     # ✅ EngineState / EngineEvent / Mode types
 │   ├── reducer.ts                   # ✅ pure reducer; non-halting errors
 │   ├── store.ts                     # ✅ Zustand wrapper
 │   ├── metrics.ts                   # ✅ computeWpm / computeAccuracy
+│   ├── persist.ts                   # ✅ POST/PATCH session + key-stats on finish (signed-in only)
 │   └── modes/
 │       ├── prose.ts                 # ✅ smart-quote + whitespace normalization
 │       └── code.ts                  # ✅ code mode with auto-indent on Enter
@@ -110,6 +143,14 @@ src/
 │   │   └── CRTFrame.tsx             # ✅ scanline + vignette wrapper
 │   ├── ads/
 │   │   └── AdSlot.tsx               # ✅ no-op v1 placeholder
+│   ├── auth/
+│   │   ├── SignInButton.tsx         # ✅ chrome pill — opens modal when out, dropdown when in
+│   │   └── SignInModal.tsx          # ✅ Google-only modal (replaces /auth/sign-in in user flow)
+│   ├── analytics/
+│   │   ├── KeyHeatmap.tsx           # ✅ static keyboard heatmap from aggregated stats
+│   │   └── WpmChart.tsx             # ✅ inline SVG sparkline of WPM over recent runs
+│   ├── mascot/
+│   │   └── RaccoonCameos.tsx        # 🟡 raccoon visuals only; full mascot/triggers TBD
 │   └── typing/
 │       ├── TypingSession.tsx        # ✅ orchestrator: load + window keydown + render
 │       ├── TypingSurface.tsx        # ✅ per-char coloring, caret on current, code whitespace glyphs
@@ -134,9 +175,10 @@ api/
 └── profile.ts                       # ✅ GET / PATCH — own profile
 ```
 
-Client-side calls to `api/*` should go through `src/lib/api.ts` `apiFetch()`
-so the JWT bearer header is automatically attached. No call sites yet
-(persistence isn't wired into the practice flow).
+All client-side calls to `api/*` go through `src/lib/api.ts` `apiFetch()`
+so the JWT bearer header is automatically attached. Active call sites:
+`src/engine/persist.ts` (session finish) and `src/lib/queries.ts`
+(dashboard).
 
 ---
 
@@ -184,6 +226,29 @@ These are intentional refinements — write them down so we don't relitigate.
     the browser never sends them to our API. Client fetches a JWT from
     `/token`, sends as `Authorization: Bearer <jwt>`, server verifies
     against the JWKS endpoint with `jose`.
+11. **Sign-in is a modal, not a route.** The Neon `<AuthView>` page
+    looked like a generic Better Auth panel and didn't match the
+    aesthetic. `SignInModal` calls `authClient.signIn.social({ provider:
+    'google', callbackURL: window.location.href })` directly so the user
+    lands back where they triggered sign-in. `/auth/$pathname` route
+    still exists; nothing in the user flow links to it.
+12. **Persistence rounds integers.** `state.startedAt` / `state.finishedAt`
+    come from `performance.timeOrigin + performance.now()`, which is
+    fractional. The DB columns `duration_ms` / `total_latency_ms` are
+    `int`/`bigint` and reject decimals (saw `invalid input syntax for
+    type integer: "343.5"` in dev). `engine/persist.ts` `Math.round`s
+    those before sending. `wpm` and `accuracy` stay decimal — those
+    columns are `numeric`.
+13. **Dashboard refetches on every visit.** Global `QueryClient` default
+    is `staleTime: 60_000`. The dashboard query overrides with
+    `refetchOnMount: 'always'` so finishing a passage and clicking
+    through always shows the new run. Other queries can keep cache.
+14. **Variant focus narrowed to Desk.** Earlier rule required feature
+    parity across all variants because the direction wasn't picked.
+    Now: only `/practice/desk` is the active product target. Other
+    variants stay in the tree as a lookbook. Cross-cutting features
+    still live in `usePracticeSession` (or sibling hooks) so any
+    variant inherits if revived later — only routes/layouts diverge.
 
 ---
 
@@ -204,48 +269,46 @@ deferred the actual tier design.
 ## What's NOT built (next steps, roughly in dependency order)
 
 ### Highest leverage next
-1. **Persistence on session finish** — `engine/persist.ts` calls
-   `apiFetch('POST /api/sessions')` then `apiFetch('PATCH /api/sessions/[id]')`
-   + `apiFetch('POST /api/key-stats')` on `status === 'finished'`. Skip
-   `keystrokes` until paid tiers exist. Use `apiFetch` from `src/lib/api.ts`
-   so the JWT bearer header attaches automatically.
-2. **Sign-in entry point** — header avatar / sign-in button that links
-   to `/auth/sign-in`. The Neon `<AuthView>` page is the actual UI; we
-   just need an entry point from the landing/practice chrome.
-3. **Replace hardcoded passages with `/api/content`** — fetch via
-   TanStack Query (calling `apiFetch('/api/content')`; that endpoint is
-   public so no token is required, but going through `apiFetch` is fine).
-   Keep `samplePassages.ts` as a fallback when env is missing.
+1. **Replace hardcoded passages with `/api/content`** — fetch via
+   TanStack Query through `apiFetch('/api/content')`; endpoint is
+   public so no token required. Keep `samplePassages.ts` as a fallback
+   when env is missing.
+2. **Anonymous "save this run" nudge** — when a signed-out user finishes
+   a passage, drop a small raccoon-flavored prompt in the results area
+   pointing to the sign-in modal. Soft, dismissible. Schema and
+   persistence already handle the signed-in path; this is pure UI.
 
 ### Pre-launch
-4. **Replace shared Google OAuth credentials** with our own Google Cloud
+3. **Replace shared Google OAuth credentials** with our own Google Cloud
    OAuth client. See `docs/neon-provisioning-checklist.md` §"TODO before
    production launch". Without this, users see "Continue to Neon" instead
    of "Continue to KeyBandit" on the consent screen.
+4. **Rename server-side `VITE_NEON_AUTH_URL` → `NEON_AUTH_URL`.** The
+   `VITE_` prefix is Vite client convention; using it for the Node
+   serverless runtime is misleading. One env-var rename + update
+   `api/_lib/auth.ts`. Keep `VITE_NEON_AUTH_URL` for the client.
 
 ### Brand layer
 5. **Raccoon mascot** — `components/raccoon/Raccoon.tsx`,
    `quips.ts` (~60 lines bucketed by trigger), `triggers.ts` that
-   subscribes to engine events with a cooldown.
-
-### Analytics view
-6. **Dashboard** — query `sessions` for history (sparkline of WPM
-   over time) + query `key_stats_user` for the lifetime heatmap.
-   Reuse the keyboard layout component logic.
+   subscribes to engine events with a cooldown. `RaccoonCameos.tsx`
+   is the only mascot file in the tree right now.
 
 ### Quality / production-ready
-8. **Engine unit tests** — pure reducer is the easy win. Cover:
+6. **Engine unit tests** — pure reducer is the easy win. Cover:
    correct sequence, wrong-char advance, backspace, code auto-indent,
    prose smart-quote normalization, finish detection.
-9. **Mobile bounce on `/practice`** — `requireDesktop` guard in
+7. **Mobile bounce on `/practice/desk`** — `requireDesktop` guard in
    `beforeLoad`; mobile redirects to landing with a friendly note.
-10. **shadcn init** + restyle Button/Dialog primitives to the warm
-    palette before they spread.
-11. **Esc to reset / Tab to next passage** — small keyboard
-    shortcuts the engine can absorb without UI churn.
-12. **Code-split the auth UI bundle** — Vercel build warns about a
+8. **shadcn init** + restyle Button/Dialog primitives to the warm
+   palette before they spread.
+9. **Esc to reset / Tab to next passage** — small keyboard
+   shortcuts the engine can absorb without UI churn.
+10. **Code-split the auth UI bundle** — Vercel build warns about a
     1 MB main chunk; the Neon `<AuthView>` library is pulling in a
-    lot. Splitting the auth route would help cold-start LCP.
+    lot. Since the modal-based sign-in skips `<AuthView>` for users,
+    lazily importing the `/auth/$pathname` route would shed most of
+    the weight from the initial bundle.
 
 ### Future (explicitly NOT in v1)
 - Beginner lessons / curriculum
@@ -267,7 +330,7 @@ deferred the actual tier design.
 cd /home/jonat/projects/typing-tutor
 pnpm install                         # if deps changed
 pnpm dev                             # vite only — generates routeTree.gen.ts
-pnpm dlx vercel dev                  # vite + api/* serverless functions
+pnpm dev:api                         # = pnpm dlx vercel dev (vite + api/*)
 pnpm typecheck                       # tsc -b --noEmit, should be silent
 pnpm build                           # vite build && tsc -b --noEmit
 ```
@@ -275,6 +338,10 @@ pnpm build                           # vite build && tsc -b --noEmit
 Build order matters: `vite build` runs first so the TanStack Router
 plugin generates `routeTree.gen.ts`, *then* tsc validates against it.
 Reversing the order breaks Vercel's clean-checkout deploy.
+
+`pnpm dev:api` requires `.env` (Vercel CLI's serverless-runtime convention),
+not `.env.local` (Vite's). Easiest: keep both files in sync — they hold the
+same `DATABASE_URL` + `VITE_NEON_AUTH_URL`. Both are gitignored.
 
 ### Production
 - Frontend: https://key-bandit.vercel.app
