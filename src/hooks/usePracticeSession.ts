@@ -3,11 +3,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEngineStore } from '@/engine/store';
 import { persistFinishedSession } from '@/engine/persist';
 import { useSession } from '@/lib/auth';
+import { useContent } from '@/lib/queries';
 import { SAMPLE_PASSAGES, type SamplePassage } from '@/data/samplePassages';
 
 /**
  * Owns the cross-cutting concerns a typing page needs:
- *  - which sample passage is selected
+ *  - which passage is selected (remote when /api/content responds, local fallback otherwise)
  *  - loading the engine when the passage changes
  *  - the window-level keydown bridge into the engine
  *  - persisting a finished session to the backend (signed-in only)
@@ -17,7 +18,8 @@ import { SAMPLE_PASSAGES, type SamplePassage } from '@/data/samplePassages';
  */
 export function usePracticeSession() {
   const [index, setIndex] = useState(0);
-  const passage: SamplePassage = SAMPLE_PASSAGES[index];
+  const [passages, setPassages] = useState<SamplePassage[]>(SAMPLE_PASSAGES);
+  const passage: SamplePassage = passages[index] ?? passages[0];
 
   const load = useEngineStore((s) => s.load);
   const dispatch = useEngineStore((s) => s.dispatch);
@@ -26,6 +28,18 @@ export function usePracticeSession() {
   const { session } = useSession();
   const isAuthed = Boolean(session);
   const queryClient = useQueryClient();
+
+  // Remote content: adopt only when nothing's mid-session so we don't
+  // yank the rug while the user is typing. If the API is down, query
+  // returns undefined and we stick with SAMPLE_PASSAGES indefinitely.
+  const { data: remote } = useContent();
+  useEffect(() => {
+    if (!remote || remote.length === 0) return;
+    if (status === 'running') return;
+    if (passages === remote) return;
+    setPassages(remote);
+    setIndex((i) => (i >= remote.length ? 0 : i));
+  }, [remote, status, passages]);
 
   useEffect(() => {
     load(passage.modeId, passage.body);
@@ -64,14 +78,14 @@ export function usePracticeSession() {
 
   const pickPassage = useCallback((i: number) => setIndex(i), []);
   const next = useCallback(
-    () => setIndex((i) => (i + 1) % SAMPLE_PASSAGES.length),
-    [],
+    () => setIndex((i) => (i + 1) % passages.length),
+    [passages.length],
   );
   const reset = useCallback(() => {
     load(passage.modeId, passage.body);
   }, [load, passage.modeId, passage.body]);
 
-  return { index, passage, passages: SAMPLE_PASSAGES, pickPassage, next, reset };
+  return { index, passage, passages, pickPassage, next, reset };
 }
 
 function isConsumedKey(key: string): boolean {

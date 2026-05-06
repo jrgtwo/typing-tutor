@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from './api';
 import type { Plan } from './plan';
+import type { SamplePassage } from '@/data/samplePassages';
+import type { ModeId } from '@/engine/types';
 
 export interface DashboardSession {
   id: string;
@@ -76,6 +78,48 @@ export function useProfile(enabled: boolean) {
 export interface ProfileUpdate {
   displayName?: string | null;
   preferences?: ProfilePreferences;
+}
+
+interface ContentItemRow {
+  id: string;
+  type: ModeId;
+  title: string;
+  body: string;
+  source: string | null;
+  language: string | null;
+}
+
+/**
+ * Public catalog of typing passages from the DB. No auth header is
+ * attached — `/api/content` is a public GET. Returns null on error so
+ * callers can fall back to the local sample list without surfacing a
+ * spinner or error UI.
+ */
+export function useContent() {
+  return useQuery<SamplePassage[]>({
+    queryKey: ['content'],
+    queryFn: async () => {
+      const res = await fetch('/api/content');
+      if (!res.ok) {
+        throw new Error(`content fetch failed: ${res.status}`);
+      }
+      const data = (await res.json()) as { items: ContentItemRow[] };
+      return data.items.map(rowToPassage);
+    },
+    // Content rarely changes; an hour is plenty.
+    staleTime: 60 * 60_000,
+    retry: 1,
+  });
+}
+
+function rowToPassage(row: ContentItemRow): SamplePassage {
+  return {
+    id: row.id,
+    modeId: row.type,
+    title: row.title,
+    body: row.body,
+    source: row.source ?? undefined,
+  };
 }
 
 export function useUpdateProfile() {

@@ -1,26 +1,35 @@
 # KeyBandit — Progress & Plan Snapshot
 
-Updated 2026-05-03 — Auth + persistence + dashboard are end-to-end wired
+Updated 2026-05-05 — v1 is feature-complete. Closed the last three v1 gaps
+this round: a `/settings` route (display name + raccoon frequency), an
+extraction of the raccoon copy/triggers into `components/mascot/quips.ts`
++ `triggers.ts`, and unit tests covering the reducer, metrics, code mode,
+and the `can()` capability gate (31 passing). Variant navigation has been
+hidden — Desk is the only featured practice variant; the other variant
+routes still exist in the tree as a lookbook, just unreachable from any
+in-app link. `/practice` redirects to `/practice/desk`.
+
+Earlier rounds got auth + persistence + dashboard end-to-end wired
 locally and on production at https://key-bandit.vercel.app. Sign-in is
 a Google-only modal (no separate `/auth/sign-in` page in the user flow).
 Finished sessions persist `sessions` + `key_stats_user` + `key_stats_session`
 when signed in; anonymous runs stay local. `/dashboard` reads the data
 back as summary stats, a WPM line chart, a lifetime keyboard heatmap, and
-a recent-runs table. Pick this up next time to know where we left off
-without re-reading the original plan.
+a recent-runs table.
 
 The full v1 architecture plan is at `~/.claude/plans/we-are-going-to-wise-lark.md`
 and remains the source of truth for *why* things are shaped this way.
+The most recent close-out plan is at
+`~/.claude/plans/zesty-dancing-sunset.md`.
 
 ---
 
 ## TL;DR — current state
 
-You can type, sign in, and see your runs.
+You can type, sign in, see your runs, and tweak your profile.
 
-- Anonymous: `/practice/desk` (and the other variants) work — engine
-  runs locally, the on-screen keyboard heatmaps live usage, no API
-  calls. Nothing persists.
+- Anonymous: `/practice/desk` works — engine runs locally, the on-screen
+  keyboard heatmaps live usage, no API calls. Nothing persists.
 - Signed in: a finished passage POSTs `/api/sessions`, PATCHes
   `/api/sessions/[id]`, and POSTs `/api/key-stats` from
   `src/engine/persist.ts`. Failures log but never throw.
@@ -29,18 +38,27 @@ You can type, sign in, and see your runs.
   60_000`). Renders summary stats, an SVG WPM chart, a lifetime
   `KeyHeatmap`, and a recent-runs table. Auth-gated in-component
   (signed-out gets a sign-in CTA, not a redirect).
+- `/settings`: GET/PATCH `/api/profile`. Display name + raccoon frequency
+  (chatty / normal / rare / off). Frequency is read by `RaccoonCameos`
+  via `useProfile()` and applied as a cooldown multiplier (×1, ×1.5, ×3,
+  off). Stored in `profiles.preferences.raccoonFrequency` (jsonb).
 
 Hardcoded passages still in use; `/api/content` not consumed yet.
 
 Routes:
-- `/` — marketing landing. Sign-in pill in the header.
-- `/practice` — default warm-paper typing session. Sign-in pill in header.
-- `/practice/desk` — **the focus variant**. Sign-in pill in header.
-- `/practice/<other-variant>` — focus, terminal, arcade, etc. Lookbook only;
-  do **not** spend effort wiring features into them. They share
-  `usePracticeSession` so cross-cutting features inherit automatically
-  if any variant gets revived.
+- `/` — marketing landing. Sign-in pill in the header. Skin-sticky
+  sidebar removed — single notepad hero only.
+- `/practice` — redirects to `/practice/desk` via `beforeLoad`.
+- `/practice/desk` — **the active variant**. Sign-in pill in header.
+- `/practice/<other-variant>` — terminal, arcade, focus, synth, cockpit,
+  karaoke, chat, typewriter. Lookbook only; **unreachable from any in-app
+  link**. They share `usePracticeSession` so cross-cutting features
+  inherit automatically if any variant gets revived. The floating skin
+  switcher (`<DesignNav />`) renders `null` for now — restore the body
+  from git when reviving variants.
 - `/dashboard` — auth-gated runs ledger.
+- `/settings` — auth-gated profile settings (display name, raccoon
+  frequency). Linked from the `<SignInButton>` user dropdown.
 - `/auth/$pathname` — Neon `<AuthView>` route. **No longer linked to from
   the user flow** — sign-in is a modal triggered by `<SignInButton>`. The
   route still exists in case a deep link is ever useful.
@@ -54,7 +72,10 @@ Routes:
   the keyboard's expected/clean states. Subtle CRT scanlines on the
   typing surface only.
 - **Mascot**: sarcastic raccoon. Reluctant compliments, never mean,
-  never cheery. Pops up occasionally — not constantly. Not built yet.
+  never cheery. Built and live — `Raccoon.tsx` (mood-driven SVG head)
+  + `RaccoonCameos.tsx` (composer) + `quips.ts` (9 copy banks) +
+  `triggers.ts` (greeting / finish / error-spike / idle hooks).
+  Frequency is user-configurable via `/settings`.
 - **Positioning**: typing speed gauge with personality, not a
   learn-to-type curriculum. No lessons.
 - **Don't copy** Monkeytype / typing.com / Keybr / SpeedCoder.
@@ -110,18 +131,19 @@ src/
 ├── styles/globals.css               # Tailwind v4 import, palette tokens, scanline + caret animation
 ├── routes/
 │   ├── __root.tsx                   # router root
-│   ├── index.tsx                    # ✅ marketing landing (sign-in pill in header)
-│   ├── practice.tsx                 # ✅ default warm-paper session (sign-in pill in header)
-│   ├── practice_.desk.tsx           # ✅ FOCUS variant — sign-in pill in header
-│   ├── practice_.<other>.tsx        # 🟡 lookbook only; do not feature-target
+│   ├── index.tsx                    # ✅ marketing landing (sign-in pill, no skin sidebar)
+│   ├── practice.tsx                 # ✅ redirects to /practice/desk via beforeLoad
+│   ├── practice_.desk.tsx           # ✅ ACTIVE variant — sign-in pill in header
+│   ├── practice_.<other>.tsx        # 🟡 lookbook only; not linked from UI; do not feature-target
 │   ├── dashboard.tsx                # ✅ summary + WPM chart + heatmap + recent runs
+│   ├── settings.tsx                 # ✅ display name + raccoon frequency form
 │   └── auth.$pathname.tsx           # ✅ Neon <AuthView> (route exists, not in user flow)
 ├── lib/
 │   ├── auth-client.ts               # ✅ Better Auth client (createAuthClient + BetterAuthReactAdapter)
 │   ├── auth.ts                      # ✅ useSession, requireAuth, signOut, signInWithGoogle
 │   ├── api.ts                       # ✅ apiFetch with cached JWT bearer
-│   ├── queries.ts                   # ✅ TanStack Query hooks (useDashboard so far)
-│   ├── plan.ts                      # ✅ can() capability gating (free/pro/power table)
+│   ├── queries.ts                   # ✅ useDashboard / useProfile / useUpdateProfile
+│   ├── plan.ts                      # ✅ can() capability gating (free/pro/power table) + tests
 │   ├── device.ts                    # ✅ isDesktop()
 │   └── utils.ts                     # ✅ cn() for Tailwind class merging
 ├── hooks/
@@ -130,13 +152,13 @@ src/
 │   └── useCaretScroll.ts            # ✅ keep caret in viewport
 ├── engine/
 │   ├── types.ts                     # ✅ EngineState / EngineEvent / Mode types
-│   ├── reducer.ts                   # ✅ pure reducer; non-halting errors
+│   ├── reducer.ts                   # ✅ pure reducer; non-halting errors  (+ reducer.test.ts)
 │   ├── store.ts                     # ✅ Zustand wrapper
-│   ├── metrics.ts                   # ✅ computeWpm / computeAccuracy
+│   ├── metrics.ts                   # ✅ computeWpm / computeAccuracy  (+ metrics.test.ts)
 │   ├── persist.ts                   # ✅ POST/PATCH session + key-stats on finish (signed-in only)
 │   └── modes/
 │       ├── prose.ts                 # ✅ smart-quote + whitespace normalization
-│       └── code.ts                  # ✅ code mode with auto-indent on Enter
+│       └── code.ts                  # ✅ code mode with auto-indent on Enter  (+ code.test.ts)
 ├── components/
 │   ├── chrome/
 │   │   ├── PaperPanel.tsx           # ✅ cream-paper card primitive
@@ -144,13 +166,17 @@ src/
 │   ├── ads/
 │   │   └── AdSlot.tsx               # ✅ no-op v1 placeholder
 │   ├── auth/
-│   │   ├── SignInButton.tsx         # ✅ chrome pill — opens modal when out, dropdown when in
+│   │   ├── SignInButton.tsx         # ✅ chrome pill — opens modal when out, dropdown (Dashboard / Settings / Sign out) when in
 │   │   └── SignInModal.tsx          # ✅ Google-only modal (replaces /auth/sign-in in user flow)
 │   ├── analytics/
 │   │   ├── KeyHeatmap.tsx           # ✅ static keyboard heatmap from aggregated stats
 │   │   └── WpmChart.tsx             # ✅ inline SVG sparkline of WPM over recent runs
 │   ├── mascot/
-│   │   └── RaccoonCameos.tsx        # 🟡 raccoon visuals only; full mascot/triggers TBD
+│   │   ├── Raccoon.tsx              # ✅ mood-driven SVG head (5 moods)
+│   │   ├── RaccoonCameos.tsx        # ✅ composer — reads useProfile, runs trigger hooks, renders bubble
+│   │   ├── quips.ts                 # ✅ 9 copy banks + pickFinishQuip + pickOne
+│   │   └── triggers.ts              # ✅ useGreeting / useFinish / useErrorSpike / useIdle cameo hooks; respects raccoonFrequency
+│   ├── DesignNav.tsx                # 🟡 returns null for now (variant switcher hidden)
 │   └── typing/
 │       ├── TypingSession.tsx        # ✅ orchestrator: load + window keydown + render
 │       ├── TypingSurface.tsx        # ✅ per-char coloring, caret on current, code whitespace glyphs
@@ -249,6 +275,24 @@ These are intentional refinements — write them down so we don't relitigate.
     variants stay in the tree as a lookbook. Cross-cutting features
     still live in `usePracticeSession` (or sibling hooks) so any
     variant inherits if revived later — only routes/layouts diverge.
+15. **Variant navigation hidden.** `DesignNav` (the floating skin
+    switcher pill) returns `null` so the Desk variant ships clean.
+    The landing's "pick a skin" sticky sidebar was removed and the
+    `/practice` route now `beforeLoad`-redirects to `/practice/desk`.
+    Variant route files are untouched — just delete the early return
+    in `DesignNav.tsx` (and re-add the sidebar / drop the redirect)
+    to restore the lookbook.
+16. **Raccoon quips and triggers split into their own files.** The
+    bank of copy lives in `components/mascot/quips.ts` (typed `Mood`
+    + `Quip` + 9 buckets + `pickOne` + `pickFinishQuip`). The four
+    cameo effects live in `components/mascot/triggers.ts` as small
+    custom hooks (`useGreetingCameo`, `useFinishCameo`,
+    `useErrorSpikeCameo`, `useIdleCameo`) — each subscribes to the
+    Zustand engine selectors it needs and respects the user's
+    `raccoonFrequency` preference (off / chatty / normal / rare,
+    where normal/rare scale cooldowns ×1.5 / ×3). `RaccoonCameos.tsx`
+    is now a thin composer that calls the hooks and renders the
+    bubble.
 
 ---
 
@@ -288,35 +332,31 @@ deferred the actual tier design.
    serverless runtime is misleading. One env-var rename + update
    `api/_lib/auth.ts`. Keep `VITE_NEON_AUTH_URL` for the client.
 
-### Brand layer
-5. **Raccoon mascot** — `components/raccoon/Raccoon.tsx`,
-   `quips.ts` (~60 lines bucketed by trigger), `triggers.ts` that
-   subscribes to engine events with a cooldown. `RaccoonCameos.tsx`
-   is the only mascot file in the tree right now.
-
 ### Quality / production-ready
-6. **Engine unit tests** — pure reducer is the easy win. Cover:
-   correct sequence, wrong-char advance, backspace, code auto-indent,
-   prose smart-quote normalization, finish detection.
-7. **Mobile bounce on `/practice/desk`** — `requireDesktop` guard in
+5. **Mobile bounce on `/practice/desk`** — `requireDesktop` guard in
    `beforeLoad`; mobile redirects to landing with a friendly note.
-8. **shadcn init** + restyle Button/Dialog primitives to the warm
+6. **shadcn init** + restyle Button/Dialog primitives to the warm
    palette before they spread.
-9. **Esc to reset / Tab to next passage** — small keyboard
+7. **Esc to reset / Tab to next passage** — small keyboard
    shortcuts the engine can absorb without UI churn.
-10. **Code-split the auth UI bundle** — Vercel build warns about a
-    1 MB main chunk; the Neon `<AuthView>` library is pulling in a
-    lot. Since the modal-based sign-in skips `<AuthView>` for users,
-    lazily importing the `/auth/$pathname` route would shed most of
-    the weight from the initial bundle.
+8. **Code-split the auth UI bundle** — Vercel build warns about a
+   1 MB main chunk; the Neon `<AuthView>` library is pulling in a
+   lot. Since the modal-based sign-in skips `<AuthView>` for users,
+   lazily importing the `/auth/$pathname` route would shed most of
+   the weight from the initial bundle.
+9. **Tests for `engine/persist.ts` and the API routes** — needs a
+   Neon test harness. Worth doing once we add a second backend
+   feature beyond `/api/profile` GET/PATCH.
 
 ### Future (explicitly NOT in v1)
 - Beginner lessons / curriculum
-- Custom user-pasted text
-- LLM-generated raccoon quips (gated behind `raccoon.dynamic`)
+- Custom user-pasted text (`content_items.type = 'custom'`)
+- LLM-generated raccoon quips (gated behind `raccoon.dynamic`; the
+  capability and the static fallback are wired today)
 - Leaderboards, real-time multiplayer races
-- Stripe billing UI (only the schema hooks exist)
-- Live ad network integration (only the slot exists)
+- Stripe billing UI (only the schema hooks exist; `profiles.plan`
+  + `can()` are ready for it)
+- Live ad network integration (only `<AdSlot>` placeholder exists)
 - `keystrokes` table writes (table exists, writer disabled)
 - Mobile typing experience
 - i18n
@@ -362,9 +402,9 @@ cookies are scoped to `*.neonauth.*.aws.neon.tech`. The JWT bearer is
 the cross-domain workaround.
 
 Manual frontend smoke (no DB needed yet — passages are hardcoded fallback):
-1. Visit `/` — landing renders, IBM Plex fonts loaded, amber + cream
-   palette visible.
-2. Click "Start typing" → land on `/practice`.
+1. Visit `/` — landing renders, IBM Plex fonts loaded, single notepad
+   hero (no skin sticky sidebar).
+2. Click "Start typing" → `/practice` redirects to `/practice/desk`.
 3. Type the passage. Wrong chars highlight rust, cursor still advances.
 4. Watch the on-screen keyboard tint up — intensity by usage, hue
    by error rate.
@@ -373,10 +413,28 @@ Manual frontend smoke (no DB needed yet — passages are hardcoded fallback):
 6. Switch to a code passage (fizzbuzz / fib) — Enter auto-skips
    indentation, whitespace renders as `↵` glyph.
 
+Settings + raccoon-frequency smoke (signed-in):
+1. Sign in via the modal → dropdown shows Dashboard / Settings / Sign out.
+2. Click Settings → form loads with current display name + raccoon
+   frequency.
+3. Set frequency to `off`, save, return to `/practice/desk` — no
+   greeting/finish/idle/error cameos.
+4. Set to `chatty`, save, restart a session — greeting cameo appears
+   shortly after mount; finish cameo appears on completion.
+5. Reload `/dashboard` — sessions and heatmap reflect the new run.
+
+Tests:
+- `pnpm test` runs all four pure-module suites: 31 assertions,
+  ~350ms. Covers reducer state machine, WPM/accuracy fixtures, code
+  mode auto-indent + Tab + whitespace preservation, and the `can()`
+  capability gate (free / pro / power, expired plans, null profile).
+
 ---
 
 ## Pointers
 
 - Original architecture plan: `~/.claude/plans/we-are-going-to-wise-lark.md`
+- Latest close-out plan (settings + quips/triggers + tests):
+  `~/.claude/plans/zesty-dancing-sunset.md`
 - Brand-direction memory: `~/.claude/projects/-home-jonat-projects-typing-tutor/memory/brand_direction.md`
 - Monetization memory: `~/.claude/projects/-home-jonat-projects-typing-tutor/memory/monetization.md`

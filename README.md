@@ -44,38 +44,40 @@ It's built around three ideas:
 - **Session results that read like a verdict.** When you finish, the
   results panel lands in a small paper card with a terse headline. No
   animated celebration. The raccoon nods, almost imperceptibly.
+- **A ledger if you sign in.** Sign in (Google) and finished passages
+  persist to your account. The dashboard shows recent runs, a WPM
+  trend, summary stats, and a lifetime keyboard heatmap that
+  accumulates across sessions. Anonymous typing still works — it just
+  doesn't follow you to next time.
+- **Tune the raccoon.** Settings control how often the mascot pops in:
+  chatty, normal, rare, or off. Default is normal. Display name lives
+  there too.
 
 ## Design exploration
 
-We're still figuring out what the typing surface itself should feel
-like, so the `/practice` route currently ships alongside a handful of
-skins — same engine, different aesthetic bets. They exist as a live
-lookbook, not as user-facing settings. The current variants, by route:
+The active practice variant is **`/practice/desk`** — a 2D tactile
+workspace where the typing surface lives on a notepad, with sticky
+notes for live stats, a torn typo receipt, and the on-screen keyboard
+laid out across a dark-wood desk. The bare `/practice` URL redirects
+to this variant.
 
-- **`/practice`** — the default warm-paper Apple II treatment.
-- **`/practice/terminal`** — full phosphor-green CRT terminal.
-- **`/practice/typewriter`** — noir parchment on a dark walnut desk.
-- **`/practice/arcade`** — neon attract-screen with a glowing score.
-- **`/practice/focus`** — zen indigo void; almost everything fades out.
-- **`/practice/synth`** — retrowave deck with sun-over-grid horizon.
-- **`/practice/cockpit`** — amber military HUD with analog gauges.
-- **`/practice/karaoke`** — stage-lit single-line focus, lyrics style.
-- **`/practice/chat`** — iMessage-style thread; the raccoon DMs you the
-  passage and you type the reply.
-- **`/practice/desk`** — 2D tactile workspace; notepad, sticky notes,
-  torn typo receipt, scattered across a dark-wood desk.
-
-Each skin reads from the same typing engine, so the numbers, the
-typo-tracking, and the keyboard heatmap all behave identically — only
-the layout and palette change. Most will not survive. A few might.
+A handful of other skins (`terminal`, `typewriter`, `arcade`, `focus`,
+`synth`, `cockpit`, `karaoke`, `chat`) still exist on disk under
+`src/routes/practice_.*.tsx` as a lookbook, but they're no longer
+linked from anywhere in the UI. Each skin reads from the same typing
+engine and shares `usePracticeSession`, so if a variant is ever revived
+the numbers, typo-tracking, and keyboard heatmap will already work — the
+files diverge only in layout and palette. To bring the lookbook back,
+restore the early-returning body in `src/components/DesignNav.tsx`.
 
 ## What's coming
 
 - A real content library (not four hardcoded passages).
-- Progress tracking tied to an account — streaks, per-key long-term
-  accuracy, a dashboard that shows where your fingers keep tripping.
-- A free tier that's generous, and a paid tier that's worth paying for.
-- More raccoon.
+- A free tier that's generous, and a paid tier that's worth paying for
+  (the schema and `can()` capability gate already exist; checkout flow
+  doesn't).
+- More raccoon — currently a static copy bank; later, optional
+  LLM-generated quips for the paid tier.
 
 ---
 
