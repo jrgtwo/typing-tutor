@@ -72,7 +72,9 @@ restore the early-returning body in `src/components/DesignNav.tsx`.
 
 ## What's coming
 
-- A real content library (not four hardcoded passages).
+- A growing content library — passages now load from the database, and
+  there's a small admin dashboard for adding/editing them. The four
+  hardcoded passages stay as an offline fallback only.
 - A free tier that's generous, and a paid tier that's worth paying for
   (the schema and `can()` capability gate already exist; checkout flow
   doesn't).

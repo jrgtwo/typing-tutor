@@ -1,13 +1,27 @@
 # KeyBandit — Progress & Plan Snapshot
 
-Updated 2026-05-05 — v1 is feature-complete. Closed the last three v1 gaps
-this round: a `/settings` route (display name + raccoon frequency), an
-extraction of the raccoon copy/triggers into `components/mascot/quips.ts`
-+ `triggers.ts`, and unit tests covering the reducer, metrics, code mode,
-and the `can()` capability gate (31 passing). Variant navigation has been
-hidden — Desk is the only featured practice variant; the other variant
-routes still exist in the tree as a lookbook, just unreachable from any
-in-app link. `/practice` redirects to `/practice/desk`.
+Updated 2026-05-05 (late) — v1 is feature-complete and the catalog is
+now backed by the database. Today's work, in order:
+
+1. Closed the last three v1 gaps from the original plan: a `/settings`
+   route (display name + raccoon frequency), an extraction of the
+   raccoon copy/triggers into `components/mascot/quips.ts` +
+   `triggers.ts`, and unit tests covering the reducer, metrics, code
+   mode, and the `can()` capability gate (31 passing).
+2. Hid all variant navigation. Desk is the only featured practice
+   variant; the other variant route files still exist in the tree as
+   a lookbook, just unreachable from any in-app link. `/practice`
+   redirects to `/practice/desk`.
+3. Wired `/api/content` end-to-end. `usePracticeSession` now reads
+   passages from the DB via a new `useContent()` query hook. The
+   four-passage `samplePassages.ts` stays in the repo as an offline /
+   pre-fetch / API-down fallback; in-progress sessions never get
+   yanked when remote arrives (adopt only on `idle` / `finished`).
+4. Built an admin dashboard at `/admin` for managing `content_items`.
+   Server-gated by an `ADMIN_EMAILS` allowlist matched against the
+   verified Google email claim on the JWT. UI: list table on the
+   left, create/edit form on the right, soft-disable via an `Active`
+   toggle (no hard delete — sessions reference content rows).
 
 Earlier rounds got auth + persistence + dashboard end-to-end wired
 locally and on production at https://key-bandit.vercel.app. Sign-in is
@@ -26,10 +40,12 @@ The most recent close-out plan is at
 
 ## TL;DR — current state
 
-You can type, sign in, see your runs, and tweak your profile.
+You can type, sign in, see your runs, tweak your profile, and (as
+admin) manage the catalog.
 
 - Anonymous: `/practice/desk` works — engine runs locally, the on-screen
-  keyboard heatmaps live usage, no API calls. Nothing persists.
+  keyboard heatmaps live usage. Passages come from `/api/content`
+  (public GET, no auth). Nothing about the run persists.
 - Signed in: a finished passage POSTs `/api/sessions`, PATCHes
   `/api/sessions/[id]`, and POSTs `/api/key-stats` from
   `src/engine/persist.ts`. Failures log but never throw.
@@ -42,8 +58,17 @@ You can type, sign in, see your runs, and tweak your profile.
   (chatty / normal / rare / off). Frequency is read by `RaccoonCameos`
   via `useProfile()` and applied as a cooldown multiplier (×1, ×1.5, ×3,
   off). Stored in `profiles.preferences.raccoonFrequency` (jsonb).
+- `/admin`: GET/POST `/api/admin/content` + PATCH `/api/admin/content/[id]`.
+  List/create/edit `content_items`; soft-disable via the `Active`
+  toggle. Gated by `requireAdmin` (verified JWT + email in
+  `ADMIN_EMAILS` env). The `ForbiddenPanel` copy is intentionally
+  generic — no mention of env vars or the gating mechanism.
 
-Hardcoded passages still in use; `/api/content` not consumed yet.
+Catalog: `useContent()` hook fetches `/api/content` once per hour
+(`staleTime: 60 * 60_000`) and the result is consumed by
+`usePracticeSession`. `samplePassages.ts` is the offline / pre-fetch /
+API-down fallback. Adoption of remote content is gated on
+`status !== 'running'` so a mid-session swap never happens.
 
 Routes:
 - `/` — marketing landing. Sign-in pill in the header. Skin-sticky
@@ -59,6 +84,10 @@ Routes:
 - `/dashboard` — auth-gated runs ledger.
 - `/settings` — auth-gated profile settings (display name, raccoon
   frequency). Linked from the `<SignInButton>` user dropdown.
+- `/admin` — admin-gated content catalog. **Not linked from any chrome**
+  — admins navigate by URL. Non-admins (signed-in or out) see a generic
+  panel. Could surface an "Admin" link in the user dropdown later by
+  returning `is_admin` from `/api/profile`.
 - `/auth/$pathname` — Neon `<AuthView>` route. **No longer linked to from
   the user flow** — sign-in is a modal triggered by `<SignInButton>`. The
   route still exists in case a deep link is ever useful.
@@ -112,14 +141,26 @@ Run `pnpm dev` for the Vite client only, or `pnpm dev:api` (which runs
 
 **Local env files**: the project uses two:
 - `.env` — read by `vercel dev` for the Node serverless runtime. Must
-  contain `DATABASE_URL` and `VITE_NEON_AUTH_URL`.
+  contain `DATABASE_URL`, `VITE_NEON_AUTH_URL`, and (for admin work)
+  `ADMIN_EMAILS`.
 - `.env.local` — read by Vite for the client bundle. Same variables.
 
-Both are gitignored. `.env.development.local` is **not** read by Vercel
-CLI — that's a Next.js convention. If `vercel dev` complains about
-`VITE_NEON_AUTH_URL must be set in the server runtime`, copy `.env.local`
-to `.env`. Long term: rename the server var to `NEON_AUTH_URL` (no
-`VITE_` prefix) since that prefix is Vite client-side convention.
+Both are gitignored. `.env.example` is the tracked template — empty
+placeholders only, no values. `.env.development.local` is **not** read
+by Vercel CLI — that's a Next.js convention. If `vercel dev` complains
+about `VITE_NEON_AUTH_URL must be set in the server runtime`, copy
+`.env.local` to `.env`. Long term: rename the server var to
+`NEON_AUTH_URL` (no `VITE_` prefix) since that prefix is Vite
+client-side convention.
+
+**Admin allowlist**: `ADMIN_EMAILS` is a comma-separated list of emails
+matched against the verified Google email claim on the JWT. Server-only
+(no `VITE_` prefix → never bundled into the client). Set in Vercel
+Project Settings → Environment Variables for Production (and Preview
+if admin needs to work there). Module-level `Set` is built once at
+runtime startup, so changes require a redeploy. Removing the allowlist
+from production is the kill-switch — `requireAdmin` then 403s every
+caller.
 
 ---
 
@@ -137,12 +178,13 @@ src/
 │   ├── practice_.<other>.tsx        # 🟡 lookbook only; not linked from UI; do not feature-target
 │   ├── dashboard.tsx                # ✅ summary + WPM chart + heatmap + recent runs
 │   ├── settings.tsx                 # ✅ display name + raccoon frequency form
+│   ├── admin.tsx                    # ✅ admin catalog manager (list + create/edit form)
 │   └── auth.$pathname.tsx           # ✅ Neon <AuthView> (route exists, not in user flow)
 ├── lib/
 │   ├── auth-client.ts               # ✅ Better Auth client (createAuthClient + BetterAuthReactAdapter)
 │   ├── auth.ts                      # ✅ useSession, requireAuth, signOut, signInWithGoogle
 │   ├── api.ts                       # ✅ apiFetch with cached JWT bearer
-│   ├── queries.ts                   # ✅ useDashboard / useProfile / useUpdateProfile
+│   ├── queries.ts                   # ✅ useDashboard / useProfile / useUpdateProfile / useContent / useAdminContent / useCreateContent / useUpdateContent
 │   ├── plan.ts                      # ✅ can() capability gating (free/pro/power table) + tests
 │   ├── device.ts                    # ✅ isDesktop()
 │   └── utils.ts                     # ✅ cn() for Tailwind class merging
@@ -192,19 +234,23 @@ db/
 └── seed.sql                         # ✅ 6 sample content_items
 
 api/
-├── _lib/                            # ✅ db client, JWT verification (jose + JWKS), ensureProfile()
-├── content.ts                       # ✅ public GET — content_items
+├── _lib/                            # ✅ db client, JWT verification (jose + JWKS), ensureProfile(), requireAuthedUser, requireAdmin, isAdminEmail
+├── content.ts                       # ✅ public GET — content_items where is_active
 ├── sessions.ts                      # ✅ POST — start a session (auth required)
 ├── sessions/[id].ts                 # ✅ PATCH — finish a session
 ├── key-stats.ts                     # ✅ POST — upsert lifetime + insert per-session
 ├── dashboard.ts                     # ✅ GET — recent sessions + lifetime heatmap
-└── profile.ts                       # ✅ GET / PATCH — own profile
+├── profile.ts                       # ✅ GET / PATCH — own profile
+└── admin/
+    ├── content.ts                   # ✅ GET (list incl. inactive) + POST (create) — admin-gated
+    └── content/[id].ts               # ✅ PATCH (update / soft-disable) — admin-gated
 ```
 
-All client-side calls to `api/*` go through `src/lib/api.ts` `apiFetch()`
-so the JWT bearer header is automatically attached. Active call sites:
-`src/engine/persist.ts` (session finish) and `src/lib/queries.ts`
-(dashboard).
+Authenticated client calls to `api/*` go through `src/lib/api.ts`
+`apiFetch()` so the JWT bearer header is automatically attached. The
+public `/api/content` GET uses plain `fetch` to skip the token round-trip.
+Active call sites: `src/engine/persist.ts` (session finish), `src/lib/queries.ts`
+(dashboard, profile, admin content).
 
 ---
 
@@ -293,6 +339,33 @@ These are intentional refinements — write them down so we don't relitigate.
     where normal/rare scale cooldowns ×1.5 / ×3). `RaccoonCameos.tsx`
     is now a thin composer that calls the hooks and renders the
     bubble.
+17. **Catalog now reads from `/api/content`.** `useContent()` is a
+    plain-`fetch` query hook with `staleTime: 60 * 60_000`, mapping
+    DB rows (`{ id, type, title, body, source, language }`) onto the
+    consumer's `SamplePassage` shape. `usePracticeSession` adopts
+    remote content only when `status !== 'running'` so a mid-session
+    swap never yanks the rug; if the API is down or the table is
+    empty, the hook silently falls back to the four `SAMPLE_PASSAGES`.
+    No spinner, no error UI — by design, the typing surface should
+    always have something to type.
+18. **Admin gate uses an env-var email allowlist, not a DB flag.**
+    `process.env.ADMIN_EMAILS` is a comma-separated list, parsed
+    once at module load into a `Set`. `requireAdmin` calls
+    `requireAuthedUser` first (so anonymous → 401 not 403; doesn't
+    leak the existence of admin endpoints), then checks the verified
+    email claim against the set. The DB column alternative is
+    cleaner long-term but requires a migration, an admin-only API to
+    flip the flag, and the same first-flip-via-SQL bootstrap problem
+    — env wins for now. Switching later is a one-day swap.
+19. **Admin UI does not advertise its mechanism.** The `ForbiddenPanel`
+    copy says only "Your account doesn't have access to this page."
+    No mention of `ADMIN_EMAILS`, no mention of redeploys. Same
+    rationale: don't tell pokers exactly how the gate works. The gate
+    itself is enforced server-side; the UI message is just polish.
+20. **Admin link is not surfaced in the chrome.** Navigating to
+    `/admin` is by URL only. To put it in the user dropdown later,
+    have `/api/profile` return `is_admin: boolean` (derived from
+    `isAdminEmail(user.email)`) and gate the `<Link>` on it.
 
 ---
 
@@ -313,14 +386,14 @@ deferred the actual tier design.
 ## What's NOT built (next steps, roughly in dependency order)
 
 ### Highest leverage next
-1. **Replace hardcoded passages with `/api/content`** — fetch via
-   TanStack Query through `apiFetch('/api/content')`; endpoint is
-   public so no token required. Keep `samplePassages.ts` as a fallback
-   when env is missing.
-2. **Anonymous "save this run" nudge** — when a signed-out user finishes
+1. **Anonymous "save this run" nudge** — when a signed-out user finishes
    a passage, drop a small raccoon-flavored prompt in the results area
    pointing to the sign-in modal. Soft, dismissible. Schema and
    persistence already handle the signed-in path; this is pure UI.
+2. **Surface `/admin` for admins in the chrome** — return `is_admin`
+   from `/api/profile` (derived from `isAdminEmail(user.email)`),
+   then conditionally add an "Admin" link to the `<SignInButton>`
+   dropdown. Today admins navigate by URL. ~15 minutes of work.
 
 ### Pre-launch
 3. **Replace shared Google OAuth credentials** with our own Google Cloud
@@ -360,6 +433,9 @@ deferred the actual tier design.
 - `keystrokes` table writes (table exists, writer disabled)
 - Mobile typing experience
 - i18n
+- Admin: hard delete, bulk import, audit log of who edited what.
+  Today's surface is intentionally small — list / create / edit /
+  toggle is enough for a one-admin catalog.
 
 ---
 
@@ -422,6 +498,25 @@ Settings + raccoon-frequency smoke (signed-in):
 4. Set to `chatty`, save, restart a session — greeting cameo appears
    shortly after mount; finish cameo appears on completion.
 5. Reload `/dashboard` — sessions and heatmap reflect the new run.
+
+Admin smoke (signed-in admin only):
+1. Set `ADMIN_EMAILS=<your-email>` in `.env` and `.env.local`, restart
+   `pnpm dev:api` (env is read at module load — hot reload won't pick it up).
+2. Sign in, navigate to `/admin` by URL.
+3. Catalog table shows all 6+ rows, including any with `is_active = false`.
+4. Click "+ new" → form clears. Type a title + body, Create. Row appears
+   at the top, message reads "Created."
+5. Visit `/practice/desk` → the new passage shows up in the picker.
+6. Back on `/admin`, click `edit` on that row, uncheck "Active", Save.
+   Row badge flips to red `off`. The picker on `/practice/desk` no longer
+   shows the passage.
+7. **Forbidden gate**: blank `ADMIN_EMAILS=` in `.env`, restart, reload
+   `/admin` — should see "Your account doesn't have access to this
+   page." (Restore the env var when done.)
+8. **API gate (curl)**: `curl -i /api/admin/content` with no Authorization
+   header → `401`. With a forged or stale bearer token → `401`. With a
+   valid bearer for a non-admin email → `403`. Only an admin's verified
+   token returns `200` + the catalog.
 
 Tests:
 - `pnpm test` runs all four pure-module suites: 31 assertions,

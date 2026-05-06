@@ -122,6 +122,108 @@ function rowToPassage(row: ContentItemRow): SamplePassage {
   };
 }
 
+export interface AdminContentItem {
+  id: string;
+  type: ModeId;
+  title: string;
+  body: string;
+  language: string | null;
+  source: string | null;
+  difficulty: number;
+  length_chars: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface AdminContentInput {
+  type: ModeId;
+  title: string;
+  body: string;
+  language?: string | null;
+  source?: string | null;
+  difficulty?: number;
+  isActive?: boolean;
+}
+
+export type AdminContentPatch = Partial<AdminContentInput>;
+
+export const adminContentQueryKey = ['admin', 'content'] as const;
+
+export function useAdminContent(enabled: boolean) {
+  return useQuery<AdminContentItem[]>({
+    queryKey: adminContentQueryKey,
+    enabled,
+    queryFn: async () => {
+      const res = await apiFetch('/api/admin/content');
+      if (res.status === 403) throw new ForbiddenError();
+      if (!res.ok) {
+        throw new Error(`admin content fetch failed: ${res.status}`);
+      }
+      const data = (await res.json()) as { items: AdminContentItem[] };
+      return data.items;
+    },
+    retry: (failureCount, err) => {
+      if (err instanceof ForbiddenError) return false;
+      return failureCount < 1;
+    },
+  });
+}
+
+export class ForbiddenError extends Error {
+  constructor(message = 'forbidden') {
+    super(message);
+    this.name = 'ForbiddenError';
+  }
+}
+
+export function useCreateContent() {
+  const qc = useQueryClient();
+  return useMutation<AdminContentItem, Error, AdminContentInput>({
+    mutationFn: async (input) => {
+      const res = await apiFetch('/api/admin/content', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(err.error ?? `create failed: ${res.status}`);
+      }
+      return (await res.json()) as AdminContentItem;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminContentQueryKey });
+      qc.invalidateQueries({ queryKey: ['content'] });
+    },
+  });
+}
+
+export function useUpdateContent() {
+  const qc = useQueryClient();
+  return useMutation<
+    AdminContentItem,
+    Error,
+    { id: string; patch: AdminContentPatch }
+  >({
+    mutationFn: async ({ id, patch }) => {
+      const res = await apiFetch(`/api/admin/content/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(err.error ?? `update failed: ${res.status}`);
+      }
+      return (await res.json()) as AdminContentItem;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminContentQueryKey });
+      qc.invalidateQueries({ queryKey: ['content'] });
+    },
+  });
+}
+
 export function useUpdateProfile() {
   const qc = useQueryClient();
   return useMutation<Profile, Error, ProfileUpdate>({

@@ -59,3 +59,34 @@ export async function requireAuthedUser(
   }
   return user;
 }
+
+const ADMIN_EMAILS: ReadonlySet<string> = new Set(
+  (process.env.ADMIN_EMAILS ?? '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
+);
+
+export function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return ADMIN_EMAILS.has(email.toLowerCase());
+}
+
+/**
+ * Gate for admin-only routes. Verifies the JWT first (so we don't leak
+ * admin existence to anonymous callers via 403), then checks the
+ * Google-verified email claim against ADMIN_EMAILS. Returns null after
+ * writing the response on any failure.
+ */
+export async function requireAdmin(
+  req: VercelRequest,
+  res: VercelResponse,
+): Promise<AuthedUser | null> {
+  const user = await requireAuthedUser(req, res);
+  if (!user) return null;
+  if (!isAdminEmail(user.email)) {
+    res.status(403).json({ error: 'forbidden' });
+    return null;
+  }
+  return user;
+}
