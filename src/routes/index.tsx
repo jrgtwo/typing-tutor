@@ -1,23 +1,10 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { AdSlot } from '@/components/ads/AdSlot';
 import { SignInButton } from '@/components/auth/SignInButton';
-import { cn } from '@/lib/utils';
 
 export const Route = createFileRoute('/')({
   component: Landing,
 });
-
-const SKINS: Array<{ to: string; label: string; color: string; rotate: number }> = [
-  { to: '/practice/desk', label: 'desk', color: '#ffd66b', rotate: -4 },
-  { to: '/practice/terminal', label: 'terminal', color: '#9ddaa3', rotate: 3 },
-  { to: '/practice/typewriter', label: 'typewriter', color: '#f5a99a', rotate: -2 },
-  { to: '/practice/arcade', label: 'arcade', color: '#a8c8ec', rotate: 4 },
-  { to: '/practice/focus', label: 'focus', color: '#ffd66b', rotate: -3 },
-  { to: '/practice/synth', label: 'synth', color: '#d8a9ec', rotate: 2 },
-  { to: '/practice/cockpit', label: 'cockpit', color: '#9ddaa3', rotate: -5 },
-  { to: '/practice/karaoke', label: 'karaoke', color: '#f5a99a', rotate: 3 },
-  { to: '/practice/chat', label: 'chat', color: '#a8c8ec', rotate: -2 },
-];
 
 function Landing() {
   return (
@@ -66,7 +53,7 @@ function Landing() {
           <SignInButton variant="desk" />
         </header>
 
-        <section className="relative mt-10 grid gap-10 md:grid-cols-[1fr_240px] md:items-start">
+        <section className="relative mt-10">
           {/* hero notepad */}
           <div
             className="relative mx-auto w-full max-w-[640px]"
@@ -74,18 +61,6 @@ function Landing() {
           >
             <Notepad />
           </div>
-
-          {/* sidebar: pick-a-skin stickies */}
-          <aside className="relative">
-            <p className="mb-4 text-center font-mono text-[10px] uppercase tracking-[0.4em] text-[#f1e4c5]/70">
-              pick a skin
-            </p>
-            <div className="grid grid-cols-2 gap-x-2 gap-y-5 md:grid-cols-1 md:gap-y-4">
-              {SKINS.map((s) => (
-                <SkinSticky key={s.to} {...s} />
-              ))}
-            </div>
-          </aside>
         </section>
 
         <footer className="relative mt-16">
@@ -207,35 +182,3 @@ function IndexCard() {
   );
 }
 
-function SkinSticky({
-  to,
-  label,
-  color,
-  rotate,
-}: {
-  to: string;
-  label: string;
-  color: string;
-  rotate: number;
-}) {
-  return (
-    <Link
-      to={to}
-      className={cn(
-        'block w-full px-3 py-2 text-center font-serif italic text-[#2a1f12]',
-        'transition-transform hover:-translate-y-0.5',
-      )}
-      style={{
-        background: color,
-        transform: `rotate(${rotate}deg)`,
-        boxShadow:
-          '0 12px 20px -8px rgba(0,0,0,0.6), inset 0 -10px 12px -10px rgba(0,0,0,0.15), inset 0 2px 0 rgba(255,255,255,0.35)',
-      }}
-    >
-      <span className="font-mono text-[9px] uppercase tracking-[0.4em] not-italic opacity-70">
-        skin
-      </span>
-      <p className="text-base">{label}</p>
-    </Link>
-  );
-}

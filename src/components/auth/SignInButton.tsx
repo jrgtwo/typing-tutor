@@ -113,6 +113,13 @@ export function SignInButton({ className, variant = 'chrome' }: SignInButtonProp
             >
               Dashboard
             </Link>
+            <Link
+              to="/settings"
+              onClick={() => setOpen(false)}
+              className="block px-3 py-2 font-mono text-xs text-[var(--color-ink)] hover:bg-[var(--color-paper-deep)]"
+            >
+              Settings
+            </Link>
             <button
               type="button"
               onClick={async () => {
