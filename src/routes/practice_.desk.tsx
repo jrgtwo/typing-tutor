@@ -388,17 +388,34 @@ function TypoReceipt() {
       <p className="text-center font-bold uppercase tracking-[0.3em]">typo log</p>
       <p className="text-center text-[9px] opacity-60">—— session ——</p>
       <div className="mt-1 space-y-0.5">
-        {typos.length === 0 && <p className="text-center italic opacity-60">(clean)</p>}
-        {typos.slice(-6).map((t, i) => (
-          <p key={i} className="flex justify-between gap-2">
-            <span>#{String(t.at).padStart(3, '0')}</span>
-            <span>
-              <span className="opacity-50">{fmt(t.got)}</span>
-              {' → '}
-              <span className="font-bold">{fmt(t.expected)}</span>
-            </span>
-          </p>
-        ))}
+        {Array.from({ length: 6 }).map((_, i) => {
+          const recent = typos.slice(-6);
+          const t = recent[i];
+          if (!t) {
+            if (i === 0 && typos.length === 0) {
+              return (
+                <p key={i} className="text-center italic opacity-60">
+                  (clean)
+                </p>
+              );
+            }
+            return (
+              <p key={i} aria-hidden className="invisible">
+                &nbsp;
+              </p>
+            );
+          }
+          return (
+            <p key={i} className="flex justify-between gap-2">
+              <span>#{String(t.at).padStart(3, '0')}</span>
+              <span>
+                <span className="opacity-50">{fmt(t.got)}</span>
+                {' → '}
+                <span className="font-bold">{fmt(t.expected)}</span>
+              </span>
+            </p>
+          );
+        })}
       </div>
     </div>
   );
