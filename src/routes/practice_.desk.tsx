@@ -232,7 +232,7 @@ function Notepad({
 }
 
 const PAGE_HEIGHT = 270;
-const TEAR_DURATION_MS = 340;
+const TEAR_DURATION_MS = 320;
 // when the cursor is within this many chars of the page end, start
 // pre-lifting the page so the actual tear has less work to do.
 const ANTICIPATE_WINDOW = 18;
@@ -421,7 +421,16 @@ function DeskSurface({
   // keep visibleSnapshotRef pointing at the current sheet's content. runs
   // AFTER the detection effect above so the detection effect always reads
   // the previous render's value.
+  //
+  // IMPORTANT: only refresh the ref when target matches passage.body —
+  // i.e., when the engine has caught up to the new passage prop. There's
+  // a one-render window after pickPassage where passage.title is the
+  // NEW title but target still holds the OLD body; updating the ref in
+  // that window would mismatch the chars (still old) with the title
+  // (already new), so the snapshot tear would render the new title over
+  // the old chars.
   useEffect(() => {
+    if (target !== passage.body) return;
     const startI = pages[currentPage]?.start ?? 0;
     const endI = pages[currentPage + 1]?.start ?? chars.length;
     visibleSnapshotRef.current = {
@@ -451,53 +460,78 @@ function DeskSurface({
         anticipation = 1 - charsLeft / ANTICIPATE_WINDOW;
       }
     }
-    // origin matches the tear-off keyframe (top-left = the binding's
-    // last-attached point) so the handoff into the tear has no snap.
+    // anticipation now uses ONLY a tiny downward translate (no skew) so
+    // the start of the tear animation doesn't include any rise/fall as
+    // a skew releases. Keyframe 0% matches this for a seamless handoff.
     const anticipationStyle: React.CSSProperties =
       anticipation > 0
         ? {
-            transform: `translate(0, ${(2 * anticipation).toFixed(2)}px) skew(${(-0.5 * anticipation).toFixed(2)}deg, ${(-0.6 * anticipation).toFixed(2)}deg)`,
+            transform: `translate(0, ${(2 * anticipation).toFixed(2)}px)`,
             transformOrigin: '0% 0%',
             transition: 'transform 90ms ease-out',
           }
         : { transition: 'transform 140ms ease-out' };
 
+    const innerContent = (
+      <div
+        style={{
+          paddingTop: SHEET_PAD_TOP,
+          paddingLeft: SHEET_PAD_X,
+          paddingRight: SHEET_PAD_X,
+          paddingBottom: SHEET_PAD_BOTTOM,
+        }}
+      >
+        <div className="mb-4 border-b border-[#8a6a3a]/40 pb-2 font-serif italic">
+          <span className="text-sm">— {passage.title} —</span>
+        </div>
+        <div
+          className="overflow-hidden whitespace-pre-wrap break-words font-mono text-[19px] leading-[30px] tracking-[0.02em]"
+          style={{ height: PAGE_HEIGHT }}
+        >
+          {chars
+            .slice(startI, endI)
+            .map((ch, j) => renderChar(ch, startI + j, cursor, typed, status))}
+        </div>
+      </div>
+    );
+
+    if (isTearing) {
+      // wrapper carries the slide-off + drop-shadow; the two children
+      // animate their own clip-paths in sync to make the diagonal fold.
+      return (
+        <div
+          key={idx}
+          className="notepad-sheet--tearing absolute inset-0 rounded-sm"
+          style={{ zIndex: 30 }}
+        >
+          <div
+            className="notepad-sheet--tearing-base absolute inset-0 rounded-sm"
+            style={SHEET_PAPER_BG}
+          >
+            {innerContent}
+          </div>
+          <div
+            className="notepad-sheet--tearing-flap absolute inset-0 rounded-sm"
+            aria-hidden
+          />
+        </div>
+      );
+    }
+
     return (
       <div
         key={idx}
-        className={cn(
-          'absolute inset-0 rounded-sm',
-          isTearing && 'notepad-sheet--tearing',
-        )}
+        className="absolute inset-0 rounded-sm"
         style={{
           ...SHEET_PAPER_BG,
           ...anticipationStyle,
-          zIndex: isTearing ? 30 : isCurrent ? 20 : 10,
+          zIndex: isCurrent ? 20 : 10,
         }}
       >
-        <div
-          style={{
-            paddingTop: SHEET_PAD_TOP,
-            paddingLeft: SHEET_PAD_X,
-            paddingRight: SHEET_PAD_X,
-            paddingBottom: SHEET_PAD_BOTTOM,
-          }}
-        >
-          <div className="mb-4 border-b border-[#8a6a3a]/40 pb-2 font-serif italic">
-            <span className="text-sm">— {passage.title} —</span>
-          </div>
-          <div
-            className="overflow-hidden whitespace-pre-wrap break-words font-mono text-[19px] leading-[30px] tracking-[0.02em]"
-            style={{ height: PAGE_HEIGHT }}
-          >
-            {chars
-              .slice(startI, endI)
-              .map((ch, j) => renderChar(ch, startI + j, cursor, typed, status))}
-          </div>
-        </div>
+        {innerContent}
 
         {/* per-sheet indicators — only on the current, non-tearing sheet */}
-        {isCurrent && !isTearing && hasNext && (
+        {isCurrent && hasNext && (
           <div
             className="pointer-events-none absolute left-1/2 -translate-x-1/2 font-mono text-[14px] leading-none text-[#2a1f12]/45"
             style={{ bottom: 14 }}
@@ -505,7 +539,7 @@ function DeskSurface({
             ▾
           </div>
         )}
-        {isCurrent && !isTearing && pages.length > 1 && (
+        {isCurrent && pages.length > 1 && (
           <div
             className="pointer-events-none absolute font-mono text-[10px] uppercase tracking-[0.3em] text-[#2a1f12]/40"
             style={{ bottom: 14, right: 16 }}
@@ -552,33 +586,42 @@ function DeskSurface({
       {tearing !== null && tearing !== currentPage && renderSheet(tearing)}
 
       {/* snapshot tear — for passage swaps and resets. the OLD content
-          rides on top with the tear animation; the freshly loaded content
-          renders underneath as the new currentPage. */}
+          rides on top with the diagonal-fold animation; the freshly
+          loaded content renders underneath as the new currentPage. */}
       {snapshotTear && (
         <div
-          className="absolute inset-0 rounded-sm notepad-sheet--tearing"
-          style={{ ...SHEET_PAPER_BG, zIndex: 35 }}
+          className="notepad-sheet--tearing absolute inset-0 rounded-sm"
+          style={{ zIndex: 35 }}
         >
           <div
-            style={{
-              paddingTop: SHEET_PAD_TOP,
-              paddingLeft: SHEET_PAD_X,
-              paddingRight: SHEET_PAD_X,
-              paddingBottom: SHEET_PAD_BOTTOM,
-            }}
+            className="notepad-sheet--tearing-base absolute inset-0 rounded-sm"
+            style={SHEET_PAPER_BG}
           >
-            <div className="mb-4 border-b border-[#8a6a3a]/40 pb-2 font-serif italic">
-              <span className="text-sm">— {snapshotTear.title} —</span>
-            </div>
             <div
-              className="overflow-hidden whitespace-pre-wrap break-words font-mono text-[19px] leading-[30px] tracking-[0.02em]"
-              style={{ height: PAGE_HEIGHT, color: '#2a1f12' }}
+              style={{
+                paddingTop: SHEET_PAD_TOP,
+                paddingLeft: SHEET_PAD_X,
+                paddingRight: SHEET_PAD_X,
+                paddingBottom: SHEET_PAD_BOTTOM,
+              }}
             >
-              {snapshotTear.chars.map((ch, j) => (
-                <span key={j}>{ch === '\n' ? '¶\n' : ch}</span>
-              ))}
+              <div className="mb-4 border-b border-[#8a6a3a]/40 pb-2 font-serif italic">
+                <span className="text-sm">— {snapshotTear.title} —</span>
+              </div>
+              <div
+                className="overflow-hidden whitespace-pre-wrap break-words font-mono text-[19px] leading-[30px] tracking-[0.02em]"
+                style={{ height: PAGE_HEIGHT, color: '#2a1f12' }}
+              >
+                {snapshotTear.chars.map((ch, j) => (
+                  <span key={j}>{ch === '\n' ? '¶\n' : ch}</span>
+                ))}
+              </div>
             </div>
           </div>
+          <div
+            className="notepad-sheet--tearing-flap absolute inset-0 rounded-sm"
+            aria-hidden
+          />
         </div>
       )}
     </div>

@@ -533,3 +533,101 @@ Tests:
   `~/.claude/plans/zesty-dancing-sunset.md`
 - Brand-direction memory: `~/.claude/projects/-home-jonat-projects-typing-tutor/memory/brand_direction.md`
 - Monetization memory: `~/.claude/projects/-home-jonat-projects-typing-tutor/memory/monetization.md`
+
+---
+
+## 2026-05-07 — Desk notepad: pagination + tear animation (WIP)
+
+All edits in `src/routes/practice_.desk.tsx` and `src/styles/globals.css`.
+
+**File-card stack (right column)**
+- The hover swing-out experiment was scrapped — moving cards triggered
+  cascading hover events. Replaced with `▲/▼` cycle buttons + mouse
+  wheel (throttled ~180ms). The previewed card snaps to the front;
+  click commits via `pickPassage`. Amber border + "tap to load" hint
+  while preview ≠ committed index.
+
+**Notepad pagination**
+- Notepad article is now dark cardboard (`#3d2a14`) with `overflow`
+  unclipped so a tearing sheet can fly off. Binding strip + holes are
+  pinned at `z-50` so they stay above any tearing sheet.
+- Each "page" is a full-paper sheet rendered as `absolute inset-0` of a
+  `NOTEPAD_HEIGHT` (410px) wrapper; sheets cover the entire visible
+  paper area (title + content), so the article's own bg is never
+  visible behind them. This fixed the "smaller note inside the note"
+  visual artifact.
+- Pagination is computed by a hidden measurement layer that mirrors the
+  visible text width and reads each char's `offsetTop`. Page break is
+  pushed whenever the next char's top exceeds `PAGE_HEIGHT` (270px)
+  past the page's start. Recomputes on `target` change and window
+  resize.
+- `renderChar` is normalized so the visible glyph always matches the
+  measurement glyph — newlines render as `'¶\n'` in every state, and
+  wrong whitespace is flagged with a red background tint instead of
+  swapping the glyph (was substituting `' '` → `'_'`, which removed the
+  wrap point and let the line overflow past the page bottom).
+- "More pages" cue + `01/04` counter sit *inside* the sheet
+  (absolute), so they never grow the notepad's height.
+
+**Tear animation — current state**
+- `.notepad-sheet--tearing` keyframe in `globals.css`. Parent wrapper
+  has `perspective: 700` and `perspective-origin: 50% 100%` so 3D
+  rotations look dramatic from a low viewing angle.
+- Anticipation: when the cursor is within the last
+  `ANTICIPATE_WINDOW` (18) chars of the current page, an inline
+  `transform: translate(0, 2px) skew(-0.5deg, -0.6deg)` ramps from 0→1.
+  The keyframe's `0%` matches that pose so the handoff is seamless.
+- Tear motion: `rotateY(-22° → -65°)` + `rotateX(-8° → -16°)` +
+  `translateZ(35px → 110px)` + `translateX(0 → -135%)`, with a growing
+  `filter: drop-shadow()`. `transform-origin: 0% 0%` (top-left = the
+  binding's last-attached point). Total **340ms**.
+- Top edge has a deep jagged `clip-path` polygon (~14px depth) so the
+  ripped paper edge is visible the moment the sheet rotates out from
+  under the binding.
+- `TEAR_DURATION_MS = 340` in the route matches so the torn sheet
+  unmounts on cue.
+
+**Tear triggers**
+- Three paths into `.notepad-sheet--tearing` all use the same animation:
+  1. **Page advance during typing** — internal `tearing` index, set
+     when `currentPage > prevPageRef.current`.
+  2. **Passage swap** (`pickPassage` / `next`) — `target` string
+     differs from `prevTargetRef`. A `visibleSnapshotRef` (updated
+     every render *after* the change-detection effect) preserves the
+     OLD page slice so it can render as a tearing overlay on top of
+     the freshly loaded passage.
+  3. **Reset** ("Tear page" button) — same `target`, but `cursor`
+     jumps from non-zero back to 0. Treated like a passage swap.
+- Snapshot tear renders at `z-35` (above both the live sheet at z-20
+  and the internal-tearing sheet at z-30); chars are plain dark ink
+  (no caret, no error styling).
+
+**Diagonal fold shipped (2026-05-08)**
+- Replaced the single-plane rotation with a real fold composite. Each
+  tearing sheet now renders as a wrapper around two clipped layers:
+  - `.notepad-sheet--tearing-base` — the original content, clipped to
+    a 5-vertex pentagon that shrinks toward the top-left triangle as
+    the fold progresses.
+  - `.notepad-sheet--tearing-flap` — `#fdf6e0` back-of-paper with a
+    135° crease-shadow gradient, clipped to a 3-vertex triangle that
+    grows from the bottom-right corner and overlays the still-attached
+    region (mimicking the way a real folded sheet covers its base).
+- `.notepad-sheet--tearing` (the wrapper) carries the slide-off:
+  `translateZ(0→20px) translateX(0→-130%)` over 320ms with a growing
+  drop-shadow. No more `rotateY` — that was the source of the "stiff
+  door swinging open" foreshortening the user disliked.
+- All three keyframes share `cubic-bezier(0.4, 0, 0.7, 0.55)` and run
+  for 320ms (matches `TEAR_DURATION_MS`). The fold itself happens in
+  the 12%→60% window; the slide-off rides 60%→100%.
+- Plan reference: `~/.claude/plans/pure-coalescing-stream.md`.
+
+**Outstanding visual issues**
+- **Whitespace error glyph** — wrong space currently shows the actual
+  space char with a red translucent background + 1px inset border. The
+  user said "we will have to work on that weird spacing glyph" — needs
+  a better visual treatment that doesn't rely on a substitution (since
+  swapping the glyph breaks the measurement-vs-visible wrap parity).
+- The fold currently jumps from `t=0` to `t=1` linearly; if it reads
+  as too uniform, intermediate keyframes (e.g. 25% / 40% with
+  hand-tuned vertex positions) would let the bottom-right corner pull
+  away faster than the rest of the diagonal sweeps in.

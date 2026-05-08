@@ -70,66 +70,85 @@ body {
   animation: caret-blink 1.2s steps(1) infinite;
 }
 
-/* Notepad sheet tear-off. Three phases, all under 250ms so a fast typist
-   never has to wait on the page to clear:
-     1. bottom-right corner gets pinched/lifted (subtle skew + small drop)
-     2. the spiral binding gives way (rotation kicks in, jagged top edge)
-     3. the sheet is dragged off to the left of the screen
-   transform-origin sits at bottom-right so rotation pivots around the
-   corner the user is "holding". */
-/* The page is "attached" at the top by the spiral binding. The tear
-   pivots around the TOP-LEFT corner — modeling the right side of the
-   binding ripping first while the left holds last — so the bottom of the
-   sheet swings down and to the left as it pulls free. The deep jagged
-   clip-path on the top edge reads as ripped paper the moment any portion
-   of the sheet rotates out from under the binding strip. */
-/* 3D tear: the page is pulled UP off the pad (translateZ toward the
-   viewer) while tilting away. Combined with a tight perspective and a
-   growing drop-shadow, the foreshortening reads as the sheet bending
-   forward rather than a flat plane rotating in place.
-   transform-origin: 0% 0% pins the top-left (the binding's last point
-   of attachment). */
-@keyframes tear-off {
-  /* matches the final anticipation pose so the handoff is seamless */
+/* Notepad sheet tear — diagonal-fold composite.
+   Each tearing sheet is rendered as a wrapper around two clipped layers
+   that share an animated fold line:
+     - .notepad-sheet--tearing-base: original content; clipped to the
+       still-attached pentagon (top-left chunk).
+     - .notepad-sheet--tearing-flap: lighter cream "back of paper";
+       clipped to the reflected triangle that overlays the still-attached
+       region exactly the way real folded paper does.
+   The wrapper (.notepad-sheet--tearing) carries the slide-off + drop
+   shadow. All three animations share the same easing and 320ms duration.
+
+   Polygon vertex counts are constant within each keyframe set (5 for
+   base, 3 for flap) so clip-path interpolates smoothly. */
+@keyframes tear-fold-base-clip {
   0% {
-    transform: translate(0, 2px) skew(-0.5deg, -0.6deg);
+    clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 100% 100%, 0% 100%);
+  }
+  12% {
+    clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 100% 100%, 0% 100%);
+  }
+  60%, 100% {
+    /* fully folded: base is just the top-left triangle */
+    clip-path: polygon(0% 0%, 100% 0%, 100% 0%, 0% 100%, 0% 100%);
+  }
+}
+@keyframes tear-fold-flap-clip {
+  0% {
+    clip-path: polygon(100% 100%, 100% 100%, 100% 100%);
+  }
+  12% {
+    clip-path: polygon(100% 100%, 100% 100%, 100% 100%);
+  }
+  60%, 100% {
+    /* fully folded: flap covers the top-left triangle */
+    clip-path: polygon(0% 0%, 100% 0%, 0% 100%);
+  }
+}
+@keyframes tear-fold-slide {
+  /* 0% → 60%: wrapper holds still while the fold runs in the children.
+     60% → 100%: the folded triangle flips up 180° around its top edge —
+     like the page being folded back over the binding — fading out as it
+     goes so the snap-unmount at the end isn't visible. */
+  0% {
+    transform: translate(0, 2px);
     filter: drop-shadow(0 0 0 transparent);
     opacity: 1;
   }
-  /* corner lifts off the pad toward the viewer */
-  20% {
-    transform: rotateY(-22deg) rotateX(-8deg) translateZ(35px);
-    filter: drop-shadow(-6px 10px 10px rgba(0, 0, 0, 0.22));
+  60% {
+    transform: translate(0, 2px);
+    filter: drop-shadow(-6px 8px 14px rgba(0, 0, 0, 0.28));
     opacity: 1;
   }
-  /* page lifted, beginning to slide off */
-  55% {
-    transform: rotateY(-42deg) rotateX(-12deg) translateZ(70px) translateX(-18%);
-    filter: drop-shadow(-14px 18px 22px rgba(0, 0, 0, 0.32));
-    opacity: 1;
-  }
-  /* slides off to the left, fully lifted off the pad */
   100% {
-    transform: rotateY(-65deg) rotateX(-16deg) translateZ(110px) translateX(-130%);
-    filter: drop-shadow(-26px 28px 36px rgba(0, 0, 0, 0.35));
+    transform: translate(0, 2px) rotateX(-180deg);
+    filter: drop-shadow(0 -8px 14px rgba(0, 0, 0, 0.16));
     opacity: 0;
   }
 }
 .notepad-sheet--tearing {
-  animation: tear-off 340ms cubic-bezier(0.4, 0, 0.7, 0.55) forwards;
-  transform-origin: 0% 0%;
-  backface-visibility: hidden;
-  clip-path: polygon(
-    0% 14px, 3% 3px, 6% 12px, 9% 5px, 12% 13px, 15% 2px, 18% 11px,
-    21% 6px, 24% 14px, 27% 0, 30% 10px, 33% 4px, 36% 13px, 39% 7px,
-    42% 12px, 45% 3px, 48% 11px, 51% 5px, 54% 14px, 57% 2px, 60% 10px,
-    63% 6px, 66% 13px, 69% 1px, 72% 11px, 75% 5px, 78% 14px, 81% 3px,
-    84% 10px, 87% 7px, 90% 13px, 93% 2px, 96% 11px, 100% 4px,
-    100% 100%, 0% 100%
+  animation: tear-fold-slide 320ms cubic-bezier(0.4, 0, 0.7, 0.55) forwards;
+  /* origin at the top edge so the rotateX flip pivots there, like a
+     sheet hinged at the binding being folded back over. */
+  transform-origin: 50% 0%;
+  backface-visibility: visible;
+}
+.notepad-sheet--tearing-base {
+  animation: tear-fold-base-clip 320ms cubic-bezier(0.4, 0, 0.7, 0.55) forwards;
+}
+.notepad-sheet--tearing-flap {
+  animation: tear-fold-flap-clip 320ms cubic-bezier(0.4, 0, 0.7, 0.55) forwards;
+  background-color: #fdf6e0;
+  /* gradient darkens the top-left of the flap so the fold-line edge
+     reads as a slight crease shadow */
+  background-image: linear-gradient(
+    135deg,
+    rgba(0, 0, 0, 0.1) 0%,
+    rgba(0, 0, 0, 0.04) 18%,
+    transparent 40%
   );
-  box-shadow:
-    -8px 6px 18px -4px rgba(0, 0, 0, 0.4),
-    -3px 2px 0 rgba(0, 0, 0, 0.15);
 }
 
 /* Physical key-smash: downward squish, lateral shake, motion blur. */
