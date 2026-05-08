@@ -1,9 +1,9 @@
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useEngineStore } from '@/engine/store';
 import { computeAccuracy, computeWpm } from '@/engine/metrics';
 import { usePracticeSession } from '@/hooks/usePracticeSession';
 import { useEngineElapsedMs } from '@/hooks/useEngineElapsedMs';
-import { useCaretScroll } from '@/hooks/useCaretScroll';
 import { DesignNav } from '@/components/DesignNav';
 import { RaccoonCameos } from '@/components/mascot/RaccoonCameos';
 import { OnScreenKeyboard } from '@/components/typing/OnScreenKeyboard';
@@ -188,26 +188,30 @@ function Notepad({
 }) {
   return (
     <article
-      className="relative rounded-sm pb-10 pl-10 pr-10 pt-14"
+      className="relative rounded-sm"
       style={{
-        backgroundColor: '#faf2d9',
-        backgroundImage:
-          'repeating-linear-gradient(0deg, rgba(90,70,40,0.08) 0 1px, transparent 1px 32px), linear-gradient(180deg, #faf2d9 0%, #efdfb3 100%)',
+        // dark cardboard backing visible only briefly during a tear, since
+        // the page sheets cover the whole article inner area.
+        backgroundColor: '#3d2a14',
         boxShadow:
           '0 3px 0 #d8c28a, 0 6px 0 #c4ab6d, 0 30px 50px -10px rgba(0,0,0,0.6), 0 60px 80px -20px rgba(0,0,0,0.5)',
         color: '#2a1f12',
       }}
     >
-      {/* spiral binding bar */}
+      {/* spiral binding bar — z-50 so it stays above tearing sheets */}
       <div
         className="pointer-events-none absolute inset-x-0 top-0 h-8 rounded-t-sm"
         style={{
+          zIndex: 50,
           background: 'linear-gradient(180deg, #6a4820 0%, #3d2a14 100%)',
           boxShadow: 'inset 0 -2px 4px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,200,140,0.2)',
         }}
       />
       {/* holes in the binding */}
-      <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-around px-8">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-2 flex justify-around px-8"
+        style={{ zIndex: 50 }}
+      >
         {Array.from({ length: 9 }).map((_, i) => (
           <span
             key={i}
@@ -220,68 +224,363 @@ function Notepad({
         ))}
       </div>
 
-      <div className="mb-4 border-b border-[#8a6a3a]/40 pb-2 font-serif italic">
-        <span className="text-sm">— {passage.title} —</span>
-      </div>
-
-      <DeskSurface />
+      {/* the actual paper sheets — each one fills the full notepad and
+          tears as a single piece of paper */}
+      <DeskSurface passage={passage} />
     </article>
   );
 }
 
-function DeskSurface() {
+const PAGE_HEIGHT = 270;
+const TEAR_DURATION_MS = 340;
+// when the cursor is within this many chars of the page end, start
+// pre-lifting the page so the actual tear has less work to do.
+const ANTICIPATE_WINDOW = 18;
+// dimensions of the full sheet (which IS the visible notepad paper)
+const SHEET_PAD_TOP = 56;    // matches old article pt-14, clears binding
+const SHEET_PAD_X = 40;      // matches old article pl-10/pr-10
+const SHEET_PAD_BOTTOM = 40; // matches old article pb-10
+const TITLE_BLOCK_HEIGHT = 44;
+const NOTEPAD_HEIGHT =
+  SHEET_PAD_TOP + TITLE_BLOCK_HEIGHT + PAGE_HEIGHT + SHEET_PAD_BOTTOM;
+const SHEET_PAPER_BG: React.CSSProperties = {
+  backgroundColor: '#faf2d9',
+  backgroundImage:
+    'repeating-linear-gradient(0deg, rgba(90,70,40,0.08) 0 1px, transparent 1px 32px), linear-gradient(180deg, #faf2d9 0%, #efdfb3 100%)',
+};
+
+function renderChar(
+  ch: string,
+  i: number,
+  cursor: number,
+  typed: string,
+  status: string,
+) {
+  const past = i < cursor;
+  const current = i === cursor && status !== 'finished';
+  const ok = past && typed[i] === ch;
+  // always render the same visible glyph the measurement layer sees, so
+  // wrapping never diverges between measure and visible (otherwise an
+  // error at the end of a line can shift content past the page bottom).
+  const display = ch === '\n' ? '¶\n' : ch;
+
+  if (current) {
+    return (
+      <span
+        key={i}
+        className="caret-blink"
+        style={{
+          background: '#2a1f12',
+          color: '#faf2d9',
+          boxShadow: '0 0 0 2px #2a1f12',
+          borderRadius: 2,
+        }}
+      >
+        {display}
+      </span>
+    );
+  }
+  if (past && ok) {
+    return (
+      <span key={i} style={{ color: '#2a1f12' }}>
+        {display}
+      </span>
+    );
+  }
+  if (past && !ok) {
+    // error on whitespace — flag with a red background tint instead of
+    // swapping the glyph (which would change wrap width).
+    if (ch === ' ' || ch === '\n') {
+      return (
+        <span
+          key={i}
+          style={{
+            color: '#c85a4a',
+            backgroundColor: 'rgba(200, 90, 74, 0.32)',
+            boxShadow: 'inset 0 0 0 1px rgba(200, 90, 74, 0.55)',
+            borderRadius: 2,
+          }}
+        >
+          {display}
+        </span>
+      );
+    }
+    return (
+      <span
+        key={i}
+        style={{
+          color: '#c85a4a',
+          textDecoration: 'line-through wavy #c85a4a',
+        }}
+      >
+        {display}
+      </span>
+    );
+  }
+  return (
+    <span key={i} style={{ color: 'rgba(42,31,18,0.35)' }}>
+      {display}
+    </span>
+  );
+}
+
+function DeskSurface({
+  passage,
+}: {
+  passage: { title: string; body: string; modeId: string };
+}) {
   const target = useEngineStore((s) => s.target);
   const cursor = useEngineStore((s) => s.cursor);
   const typed = useEngineStore((s) => s.typed);
   const status = useEngineStore((s) => s.status);
-  const caretRef = useCaretScroll();
+
+  const measureRef = useRef<HTMLDivElement>(null);
+  const [pages, setPages] = useState<{ start: number; offsetTop: number }[]>([
+    { start: 0, offsetTop: 0 },
+  ]);
+
+  useLayoutEffect(() => {
+    const recompute = () => {
+      const node = measureRef.current;
+      if (!node) return;
+      const spans = Array.from(node.querySelectorAll<HTMLSpanElement>('[data-i]'));
+      if (spans.length === 0) {
+        setPages([{ start: 0, offsetTop: 0 }]);
+        return;
+      }
+      const result: { start: number; offsetTop: number }[] = [{ start: 0, offsetTop: 0 }];
+      let pageOffset = 0;
+      for (let i = 0; i < spans.length; i++) {
+        const top = spans[i].offsetTop;
+        if (top - pageOffset >= PAGE_HEIGHT) {
+          result.push({ start: i, offsetTop: top });
+          pageOffset = top;
+        }
+      }
+      setPages(result);
+    };
+    recompute();
+    window.addEventListener('resize', recompute);
+    return () => window.removeEventListener('resize', recompute);
+  }, [target]);
+
+  // page that contains the cursor
+  let currentPage = 0;
+  for (let p = pages.length - 1; p >= 0; p--) {
+    if (cursor >= pages[p].start) {
+      currentPage = p;
+      break;
+    }
+  }
+
+  // when currentPage advances, kick off a tear animation on the page being left
+  const [tearing, setTearing] = useState<number | null>(null);
+  const prevPageRef = useRef(currentPage);
+  useEffect(() => {
+    const prev = prevPageRef.current;
+    if (currentPage > prev) {
+      setTearing(prev);
+      const t = window.setTimeout(() => setTearing(null), TEAR_DURATION_MS);
+      prevPageRef.current = currentPage;
+      return () => window.clearTimeout(t);
+    }
+    // moving backward (new passage, reset, etc.) — no internal tear; the
+    // snapshot tear below handles the visual transition instead.
+    prevPageRef.current = currentPage;
+    setTearing(null);
+  }, [currentPage]);
+
+  // Snapshot tearing: any time the passage swaps (next file / pick file)
+  // OR the cursor jumps back to 0 within the same passage (Tear page reset),
+  // we want the previously visible sheet to physically tear off, revealing
+  // the freshly loaded content underneath.
+  type Snapshot = { chars: string[]; title: string };
+  const [snapshotTear, setSnapshotTear] = useState<Snapshot | null>(null);
+  const visibleSnapshotRef = useRef<Snapshot>({ chars: [], title: passage.title });
+  const prevTargetRef = useRef(target);
+  const prevCursorRef = useRef(cursor);
+
+  useEffect(() => {
+    const targetChanged = target !== prevTargetRef.current;
+    const wasReset =
+      !targetChanged && cursor === 0 && prevCursorRef.current > 0;
+    if (targetChanged || wasReset) {
+      // capture the OLD sheet (the ref still holds the previous render's
+      // visible slice — see the ref-update effect below)
+      setSnapshotTear(visibleSnapshotRef.current);
+      setTearing(null);
+      const t = window.setTimeout(() => setSnapshotTear(null), TEAR_DURATION_MS);
+      prevTargetRef.current = target;
+      prevCursorRef.current = cursor;
+      return () => window.clearTimeout(t);
+    }
+    prevTargetRef.current = target;
+    prevCursorRef.current = cursor;
+  }, [target, cursor]);
+
+  // keep visibleSnapshotRef pointing at the current sheet's content. runs
+  // AFTER the detection effect above so the detection effect always reads
+  // the previous render's value.
+  useEffect(() => {
+    const startI = pages[currentPage]?.start ?? 0;
+    const endI = pages[currentPage + 1]?.start ?? chars.length;
+    visibleSnapshotRef.current = {
+      chars: chars.slice(startI, endI),
+      title: passage.title,
+    };
+  });
+
+  const chars = Array.from(target);
+  const hasNext = currentPage < pages.length - 1;
+
+  const renderSheet = (idx: number) => {
+    const startI = pages[idx].start;
+    const endI = pages[idx + 1]?.start ?? chars.length;
+    const isTearing = tearing === idx;
+    const isCurrent = currentPage === idx;
+
+    // pre-tear "anticipation" — only on the live current page when there
+    // is a next page to flip to. Ramps from 0 → 1 over the last
+    // ANTICIPATE_WINDOW chars; the resulting pose matches the tear-off
+    // keyframe's 0% so the handoff is seamless.
+    const hasFollowingPage = idx + 1 < pages.length;
+    let anticipation = 0;
+    if (isCurrent && !isTearing && hasFollowingPage && status !== 'finished') {
+      const charsLeft = endI - cursor;
+      if (charsLeft >= 0 && charsLeft <= ANTICIPATE_WINDOW) {
+        anticipation = 1 - charsLeft / ANTICIPATE_WINDOW;
+      }
+    }
+    // origin matches the tear-off keyframe (top-left = the binding's
+    // last-attached point) so the handoff into the tear has no snap.
+    const anticipationStyle: React.CSSProperties =
+      anticipation > 0
+        ? {
+            transform: `translate(0, ${(2 * anticipation).toFixed(2)}px) skew(${(-0.5 * anticipation).toFixed(2)}deg, ${(-0.6 * anticipation).toFixed(2)}deg)`,
+            transformOrigin: '0% 0%',
+            transition: 'transform 90ms ease-out',
+          }
+        : { transition: 'transform 140ms ease-out' };
+
+    return (
+      <div
+        key={idx}
+        className={cn(
+          'absolute inset-0 rounded-sm',
+          isTearing && 'notepad-sheet--tearing',
+        )}
+        style={{
+          ...SHEET_PAPER_BG,
+          ...anticipationStyle,
+          zIndex: isTearing ? 30 : isCurrent ? 20 : 10,
+        }}
+      >
+        <div
+          style={{
+            paddingTop: SHEET_PAD_TOP,
+            paddingLeft: SHEET_PAD_X,
+            paddingRight: SHEET_PAD_X,
+            paddingBottom: SHEET_PAD_BOTTOM,
+          }}
+        >
+          <div className="mb-4 border-b border-[#8a6a3a]/40 pb-2 font-serif italic">
+            <span className="text-sm">— {passage.title} —</span>
+          </div>
+          <div
+            className="overflow-hidden whitespace-pre-wrap break-words font-mono text-[19px] leading-[30px] tracking-[0.02em]"
+            style={{ height: PAGE_HEIGHT }}
+          >
+            {chars
+              .slice(startI, endI)
+              .map((ch, j) => renderChar(ch, startI + j, cursor, typed, status))}
+          </div>
+        </div>
+
+        {/* per-sheet indicators — only on the current, non-tearing sheet */}
+        {isCurrent && !isTearing && hasNext && (
+          <div
+            className="pointer-events-none absolute left-1/2 -translate-x-1/2 font-mono text-[14px] leading-none text-[#2a1f12]/45"
+            style={{ bottom: 14 }}
+          >
+            ▾
+          </div>
+        )}
+        {isCurrent && !isTearing && pages.length > 1 && (
+          <div
+            className="pointer-events-none absolute font-mono text-[10px] uppercase tracking-[0.3em] text-[#2a1f12]/40"
+            style={{ bottom: 14, right: 16 }}
+          >
+            {String(currentPage + 1).padStart(2, '0')}/{String(pages.length).padStart(2, '0')}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
-    <div className="h-[270px] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[19px] leading-[30px] tracking-[0.02em]">
-      {Array.from(target).map((ch, i) => {
-        const past = i < cursor;
-        const current = i === cursor && status !== 'finished';
-        const ok = past && typed[i] === ch;
+    <div
+      className="relative w-full"
+      style={{
+        height: NOTEPAD_HEIGHT,
+        // close perspective for dramatic foreshortening — makes the page
+        // look like it's being lifted off the pad rather than rotating
+        // flat. Couple this with translateZ on the tearing keyframe.
+        perspective: 700,
+        perspectiveOrigin: '50% 100%',
+        transformStyle: 'preserve-3d',
+      }}
+    >
+      {/* hidden layer — measures where lines wrap so we know page boundaries.
+          width matches the visible text (sheet width minus side padding). */}
+      <div
+        ref={measureRef}
+        aria-hidden
+        className="invisible pointer-events-none absolute whitespace-pre-wrap break-words font-mono text-[19px] leading-[30px] tracking-[0.02em]"
+        style={{ left: SHEET_PAD_X, right: SHEET_PAD_X, top: 0 }}
+      >
+        {chars.map((ch, i) => (
+          <span key={i} data-i={i}>
+            {ch === '\n' ? '¶\n' : ch}
+          </span>
+        ))}
+      </div>
 
-        if (current) {
-          return (
-            <span
-              key={i}
-              ref={caretRef}
-              className="caret-blink"
-              style={{
-                background: '#2a1f12',
-                color: '#faf2d9',
-                padding: '0 2px',
-                borderRadius: 2,
-              }}
+      {/* the pad: render the live sheet plus the one being torn (if any).
+          when the live sheet tears, the next-current sheet sits beneath it
+          at z-20 so it's revealed as the torn sheet rips away. */}
+      {renderSheet(currentPage)}
+      {tearing !== null && tearing !== currentPage && renderSheet(tearing)}
+
+      {/* snapshot tear — for passage swaps and resets. the OLD content
+          rides on top with the tear animation; the freshly loaded content
+          renders underneath as the new currentPage. */}
+      {snapshotTear && (
+        <div
+          className="absolute inset-0 rounded-sm notepad-sheet--tearing"
+          style={{ ...SHEET_PAPER_BG, zIndex: 35 }}
+        >
+          <div
+            style={{
+              paddingTop: SHEET_PAD_TOP,
+              paddingLeft: SHEET_PAD_X,
+              paddingRight: SHEET_PAD_X,
+              paddingBottom: SHEET_PAD_BOTTOM,
+            }}
+          >
+            <div className="mb-4 border-b border-[#8a6a3a]/40 pb-2 font-serif italic">
+              <span className="text-sm">— {snapshotTear.title} —</span>
+            </div>
+            <div
+              className="overflow-hidden whitespace-pre-wrap break-words font-mono text-[19px] leading-[30px] tracking-[0.02em]"
+              style={{ height: PAGE_HEIGHT, color: '#2a1f12' }}
             >
-              {ch === '\n' ? '¶\n' : ch}
-            </span>
-          );
-        }
-        if (past && ok) {
-          return (
-            <span key={i} style={{ color: '#2a1f12' }}>
-              {ch}
-            </span>
-          );
-        }
-        if (past && !ok) {
-          return (
-            <span
-              key={i}
-              style={{
-                color: '#c85a4a',
-                textDecoration: 'line-through wavy #c85a4a',
-              }}
-            >
-              {ch === ' ' ? '_' : ch}
-            </span>
-          );
-        }
-        return <span key={i} style={{ color: 'rgba(42,31,18,0.35)' }}>{ch}</span>;
-      })}
+              {snapshotTear.chars.map((ch, j) => (
+                <span key={j}>{ch === '\n' ? '¶\n' : ch}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -507,23 +806,62 @@ function CardStack({
   index: number;
   pickPassage: (i: number) => void;
 }) {
+  const [preview, setPreview] = useState(index);
+  const lastWheel = useRef(0);
+
+  useEffect(() => {
+    setPreview(index);
+  }, [index]);
+
+  const cycle = (dir: 1 | -1) => {
+    setPreview((p) => (p + dir + passages.length) % passages.length);
+  };
+
+  const onWheel = (e: React.WheelEvent) => {
+    const now = Date.now();
+    if (now - lastWheel.current < 180) return;
+    lastWheel.current = now;
+    cycle(e.deltaY > 0 ? 1 : -1);
+  };
+
+  const previewIsCommitted = preview === index;
+
   return (
     <div className="relative w-full max-w-[200px]">
       <p className="mb-2 text-center font-mono text-[10px] uppercase tracking-[0.4em] text-[#f1e4c5]/70">
         file cards
       </p>
-      <div className="relative h-[140px]">
+
+      <div className="mb-1 flex justify-center">
+        <button
+          type="button"
+          onClick={() => cycle(-1)}
+          aria-label="Previous card"
+          className="flex h-5 w-12 items-center justify-center rounded-sm border border-[#c4ab6d]/50 bg-[#2d2218] font-mono text-[10px] text-[#f1e4c5]/80 shadow-sm transition-colors hover:bg-[#3a2c1d] hover:text-[#f1e4c5]"
+        >
+          ▲
+        </button>
+      </div>
+
+      <div
+        className="relative h-[140px] touch-none"
+        onWheel={onWheel}
+      >
         {passages.map((p, i) => {
-          const offset = i - index;
-          const active = i === index;
+          const offset = i - preview;
+          const active = i === preview;
           return (
             <button
               key={p.id}
               type="button"
               onClick={() => pickPassage(i)}
               className={cn(
-                'absolute inset-x-0 rounded-sm border border-[#c4ab6d]/60 px-3 py-2 text-left font-serif italic transition-transform',
-                active ? 'bg-[#faf2d9] text-[#2a1f12]' : 'bg-[#e6d4a8] text-[#4a3520]/80 hover:bg-[#f1e4c5]',
+                'absolute inset-x-0 rounded-sm border px-3 py-2 text-left font-serif italic transition-all duration-300 ease-out',
+                active
+                  ? previewIsCommitted
+                    ? 'border-[#c4ab6d]/60 bg-[#faf2d9] text-[#2a1f12]'
+                    : 'border-[#e5a042]/80 bg-[#faf2d9] text-[#2a1f12]'
+                  : 'border-[#c4ab6d]/60 bg-[#e6d4a8] text-[#4a3520]/80',
               )}
               style={{
                 top: Math.abs(offset) * 8,
@@ -543,6 +881,22 @@ function CardStack({
           );
         })}
       </div>
+
+      <div className="mt-1 flex items-center justify-center gap-3">
+        <button
+          type="button"
+          onClick={() => cycle(1)}
+          aria-label="Next card"
+          className="flex h-5 w-12 items-center justify-center rounded-sm border border-[#c4ab6d]/50 bg-[#2d2218] font-mono text-[10px] text-[#f1e4c5]/80 shadow-sm transition-colors hover:bg-[#3a2c1d] hover:text-[#f1e4c5]"
+        >
+          ▼
+        </button>
+      </div>
+
+      <p className="mt-2 text-center font-mono text-[9px] uppercase tracking-[0.35em] text-[#f1e4c5]/50">
+        {String(preview + 1).padStart(2, '0')} / {String(passages.length).padStart(2, '0')}
+        {!previewIsCommitted && <span className="ml-2 text-[#e5a042]">· tap to load</span>}
+      </p>
     </div>
   );
 }
