@@ -224,6 +224,127 @@ export function useUpdateContent() {
   });
 }
 
+// ── mode_configs ──────────────────────────────────────────────────────────
+//
+// Public read returns admin-edited overrides per (mode_id, difficulty). The
+// orchestrator overlays these on top of each mode's code-level default
+// difficulties to produce the effective config. Missing rows fall through to
+// code defaults.
+
+export interface ModeConfigRow {
+  mode_id: string;
+  difficulty: string;
+  config: Record<string, unknown>;
+}
+
+export interface AdminModeConfigRow extends ModeConfigRow {
+  id: number;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+/**
+ * Indexed effective overrides: configs[modeId][difficulty] → Record<string, unknown>.
+ * The orchestrator does `{ ...codeDefault, ...overrides[mode][diff] }` per
+ * session start.
+ */
+export type ModeConfigsByMode = Record<string, Record<string, Record<string, unknown>>>;
+
+function indexConfigs(rows: ModeConfigRow[]): ModeConfigsByMode {
+  const out: ModeConfigsByMode = {};
+  for (const r of rows) {
+    if (!out[r.mode_id]) out[r.mode_id] = {};
+    out[r.mode_id][r.difficulty] = r.config;
+  }
+  return out;
+}
+
+export const modeConfigsQueryKey = ['mode-configs'] as const;
+
+export function useModeConfigs() {
+  return useQuery<ModeConfigsByMode>({
+    queryKey: modeConfigsQueryKey,
+    queryFn: async () => {
+      const res = await fetch('/api/mode-configs');
+      if (!res.ok) throw new Error(`mode-configs fetch failed: ${res.status}`);
+      const data = (await res.json()) as { items: ModeConfigRow[] };
+      return indexConfigs(data.items);
+    },
+    // Configs change rarely; an hour is plenty.
+    staleTime: 60 * 60_000,
+    retry: 1,
+  });
+}
+
+export const adminModeConfigsQueryKey = ['admin', 'mode-configs'] as const;
+
+export function useAdminModeConfigs(enabled: boolean) {
+  return useQuery<AdminModeConfigRow[]>({
+    queryKey: adminModeConfigsQueryKey,
+    enabled,
+    queryFn: async () => {
+      const res = await apiFetch('/api/admin/mode-configs');
+      if (res.status === 403) throw new ForbiddenError();
+      if (!res.ok) throw new Error(`admin mode-configs fetch failed: ${res.status}`);
+      const data = (await res.json()) as { items: AdminModeConfigRow[] };
+      return data.items;
+    },
+    retry: (failureCount, err) => {
+      if (err instanceof ForbiddenError) return false;
+      return failureCount < 1;
+    },
+  });
+}
+
+export function useUpdateModeConfig() {
+  const qc = useQueryClient();
+  return useMutation<
+    AdminModeConfigRow,
+    Error,
+    { modeId: string; difficulty: string; config: Record<string, unknown> }
+  >({
+    mutationFn: async ({ modeId, difficulty, config }) => {
+      const res = await apiFetch(
+        `/api/admin/mode-configs/${encodeURIComponent(modeId)}/${encodeURIComponent(difficulty)}`,
+        {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ config }),
+        },
+      );
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(err.error ?? `update failed: ${res.status}`);
+      }
+      return (await res.json()) as AdminModeConfigRow;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminModeConfigsQueryKey });
+      qc.invalidateQueries({ queryKey: modeConfigsQueryKey });
+    },
+  });
+}
+
+export function useResetModeConfig() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { modeId: string; difficulty: string }>({
+    mutationFn: async ({ modeId, difficulty }) => {
+      const res = await apiFetch(
+        `/api/admin/mode-configs/${encodeURIComponent(modeId)}/${encodeURIComponent(difficulty)}`,
+        { method: 'DELETE' },
+      );
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(err.error ?? `delete failed: ${res.status}`);
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminModeConfigsQueryKey });
+      qc.invalidateQueries({ queryKey: modeConfigsQueryKey });
+    },
+  });
+}
+
 export function useUpdateProfile() {
   const qc = useQueryClient();
   return useMutation<Profile, Error, ProfileUpdate>({

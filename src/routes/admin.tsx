@@ -2,10 +2,12 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { PaperPanel } from '@/components/chrome/PaperPanel';
 import { SignInModal } from '@/components/auth/SignInModal';
+import { ModeConfigsBoard } from '@/components/admin/ModeConfigsBoard';
 import { useSession } from '@/lib/auth';
 import {
   ForbiddenError,
   useAdminContent,
+  useAdminModeConfigs,
   useCreateContent,
   useUpdateContent,
   type AdminContentItem,
@@ -17,11 +19,17 @@ export const Route = createFileRoute('/admin')({
 });
 
 type DraftMode = { kind: 'create' } | { kind: 'edit'; item: AdminContentItem };
+type Section = 'content' | 'modes';
 
 function Admin() {
   const { session, loading: authLoading } = useSession();
   const isAuthed = Boolean(session);
-  const query = useAdminContent(isAuthed);
+  const [section, setSection] = useState<Section>('content');
+  const contentQuery = useAdminContent(isAuthed && section === 'content');
+  const modesQuery = useAdminModeConfigs(isAuthed && section === 'modes');
+
+  const activeQuery = section === 'content' ? contentQuery : modesQuery;
+  const forbidden = activeQuery.error instanceof ForbiddenError;
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-12">
@@ -30,8 +38,18 @@ function Admin() {
           KeyBandit · admin
         </p>
         <h1 className="font-serif text-3xl text-[var(--color-ink)]">
-          Content catalog
+          {section === 'content' ? 'Content catalog' : 'Mode configs'}
         </h1>
+        {isAuthed && !forbidden && (
+          <nav className="mt-3 flex gap-1">
+            <SectionTab active={section === 'content'} onClick={() => setSection('content')}>
+              Content
+            </SectionTab>
+            <SectionTab active={section === 'modes'} onClick={() => setSection('modes')}>
+              Modes
+            </SectionTab>
+          </nav>
+        )}
       </header>
 
       <div className="mt-6">
@@ -43,25 +61,52 @@ function Admin() {
           </PaperPanel>
         ) : !isAuthed ? (
           <SignedOutPanel />
-        ) : query.error instanceof ForbiddenError ? (
+        ) : forbidden ? (
           <ForbiddenPanel />
-        ) : query.isLoading ? (
+        ) : activeQuery.isLoading ? (
           <PaperPanel>
             <p className="font-mono text-xs text-[var(--color-ink-soft)]">
-              Pulling catalog…
+              {section === 'content' ? 'Pulling catalog…' : 'Pulling mode configs…'}
             </p>
           </PaperPanel>
-        ) : query.error ? (
+        ) : activeQuery.error ? (
           <PaperPanel>
             <p className="font-mono text-xs text-[var(--color-rust)]">
-              Could not load the catalog. Try again in a moment.
+              Could not load. Try again in a moment.
             </p>
           </PaperPanel>
+        ) : section === 'content' ? (
+          <AdminBoard items={contentQuery.data ?? []} />
         ) : (
-          <AdminBoard items={query.data ?? []} />
+          <ModeConfigsBoard rows={modesQuery.data ?? []} />
         )}
       </div>
     </main>
+  );
+}
+
+function SectionTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        'rounded-md border px-3 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ' +
+        (active
+          ? 'border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-paper)]'
+          : 'border-[var(--color-paper-deep)] text-[var(--color-ink)] hover:border-[var(--color-ink-soft)]')
+      }
+    >
+      {children}
+    </button>
   );
 }
 

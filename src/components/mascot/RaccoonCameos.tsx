@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useEngineStore } from '@/engine/store';
 import { useSession } from '@/lib/auth';
 import { useProfile, type RaccoonFrequency } from '@/lib/queries';
 import { cn } from '@/lib/utils';
@@ -20,9 +19,6 @@ import {
  * needs from the engine store and the user's preferences.
  */
 export function RaccoonCameos() {
-  const cursor = useEngineStore((s) => s.cursor);
-  const charsTyped = useEngineStore((s) => s.charsTyped);
-
   const { session } = useSession();
   const profileQuery = useProfile(Boolean(session));
   const frequency: RaccoonFrequency =
@@ -40,12 +36,12 @@ export function RaccoonCameos() {
   useErrorSpikeCameo(opts);
   useIdleCameo(opts);
 
-  // reset on new passage
-  useEffect(() => {
-    if (cursor === 0 && charsTyped === 0) {
-      setCameo(null);
-    }
-  }, [cursor, charsTyped]);
+  // Note: we used to clear cameos on engine reset (cursor=0, charsTyped=0),
+  // but that killed them on every Race the Clock auto-refill and even on
+  // initial mount before the greeting could show. Cameos auto-dismiss via
+  // their `duration` (effect below); a brief carry-over into the next
+  // passage is fine, and saves us from heuristics about *why* the engine
+  // just reset.
 
   // auto-dismiss
   useEffect(() => {

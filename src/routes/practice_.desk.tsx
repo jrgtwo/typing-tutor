@@ -9,6 +9,9 @@ import { RaccoonCameos } from '@/components/mascot/RaccoonCameos';
 import { OnScreenKeyboard } from '@/components/typing/OnScreenKeyboard';
 import { BetweenSessionsAd } from '@/components/ads/BetweenSessionsAd';
 import { SignInButton } from '@/components/auth/SignInButton';
+import { StampTray } from '@/components/desk/StampTray';
+import { StampedMode } from '@/components/desk/StampedMode';
+import { listModes } from '@/modes';
 import { cn } from '@/lib/utils';
 
 export const Route = createFileRoute('/practice_/desk')({
@@ -33,7 +36,27 @@ const DESK_KBD: React.CSSProperties = {
  * and drop-shadow do most of the work; the grid is intentionally off.
  */
 function DeskPractice() {
-  const { passage, passages, index, pickPassage, next, reset } = usePracticeSession();
+  const {
+    passage,
+    passages,
+    index,
+    pickPassage,
+    next,
+    reset,
+    activeMode,
+    difficulty,
+    selectMode,
+    selectDifficulty,
+    modeState,
+    effectiveConfig,
+    sessionDone,
+    intermission,
+    finalScore,
+    elapsedMs,
+  } = usePracticeSession();
+  const modes = listModes();
+  const HudComponent = activeMode.HudComponent;
+  const EndScreenComponent = activeMode.EndScreenComponent;
 
   return (
     <main
@@ -89,9 +112,24 @@ function DeskPractice() {
           </Link>
           <div className="flex items-center gap-3">
             <SignInButton variant="desk" />
-            <IndexCard title={passage.title} source={passage.source} modeId={passage.modeId} />
+            <IndexCard
+              title={passage.title}
+              source={passage.source}
+              activeMode={activeMode}
+              difficulty={difficulty}
+            />
           </div>
         </header>
+
+        <div className="mx-auto max-w-6xl px-6 pb-2">
+          <StampTray
+            modes={modes}
+            activeId={activeMode.id}
+            difficulty={difficulty}
+            onSelectMode={selectMode}
+            onSelectDifficulty={selectDifficulty}
+          />
+        </div>
 
         {/* scatter zone — three columns: left sidebar, hero notepad, right sidebar.
             Absolute items keep the tactile scattered feel but sit inside
@@ -137,22 +175,41 @@ function DeskPractice() {
             </div>
           </div>
 
-          {/* floating pocketwatch — bottom left of notepad, rotated */}
+          {/* mode-owned HUD slot — Practice renders the count-up pocketwatch,
+              Race the Clock renders a countdown, Survival renders strike balls.
+              Position is owned by the HUD component itself so each mode picks
+              where on the desk its HUD lives. */}
+          <HudComponent
+            state={modeState}
+            difficulty={effectiveConfig}
+            elapsedMs={elapsedMs}
+          />
+        </section>
+
+        {intermission && <IntermissionToast />}
+
+        {sessionDone && finalScore && EndScreenComponent && (
           <div
-            className="pointer-events-none absolute z-10"
+            className="fixed inset-0 z-40 flex items-center justify-center px-6"
             style={{
-              left: '18%',
-              bottom: -34,
-              transform: 'rotate(8deg)',
+              background:
+                'radial-gradient(ellipse 70% 55% at 50% 45%, rgba(20,12,6,0.55) 0%, rgba(10,5,2,0.85) 80%)',
+              backdropFilter: 'blur(2px)',
             }}
           >
-            <Pocketwatch />
+            <EndScreenComponent
+              score={finalScore}
+              state={modeState}
+              difficulty={effectiveConfig}
+              onReset={reset}
+              onNext={next}
+            />
           </div>
-        </section>
+        )}
 
         {/* footer — actions */}
         <div className="relative px-6 pb-6 pt-2">
-          <DeskFooter onNext={next} onReset={reset} />
+          {!sessionDone && <DeskFooter onNext={next} onReset={reset} />}
 
           <BetweenSessionsAd />
 
@@ -681,15 +738,17 @@ function StickyStat({ sampler, label, big }: { sampler: 'wpm' | 'acc' | 'err'; l
 function IndexCard({
   title,
   source,
-  modeId,
+  activeMode,
+  difficulty,
 }: {
   title: string;
   source?: string;
-  modeId: string;
+  activeMode: import('@/modes').SessionMode<any, any>;
+  difficulty: import('@/modes').Difficulty;
 }) {
   return (
     <div
-      className="rounded-sm px-4 py-2 text-right"
+      className="flex items-center gap-3 rounded-sm px-4 py-2 text-right"
       style={{
         background: '#f1e4c5',
         color: '#2a1f12',
@@ -697,11 +756,14 @@ function IndexCard({
         transform: 'rotate(1.5deg)',
       }}
     >
-      <p className="font-mono text-[9px] uppercase tracking-[0.4em] opacity-60">
-        {modeId} · file no. 042
-      </p>
-      <p className="font-serif text-sm italic">{title}</p>
-      {source && <p className="font-serif text-[10px] italic opacity-60">— {source}</p>}
+      <StampedMode mode={activeMode} difficulty={difficulty} />
+      <div>
+        <p className="font-mono text-[9px] uppercase tracking-[0.4em] opacity-60">
+          file no. 042
+        </p>
+        <p className="font-serif text-sm italic">{title}</p>
+        {source && <p className="font-serif text-[10px] italic opacity-60">— {source}</p>}
+      </div>
     </div>
   );
 }
@@ -792,49 +854,25 @@ function Calendar({ total, index }: { total: number; index: number }) {
   );
 }
 
-function Pocketwatch() {
-  const elapsed = useEngineElapsedMs();
-  const secs = Math.floor(elapsed / 1000);
-  const angle = (secs % 60) * 6;
-
+function IntermissionToast() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => setMounted(true), 20);
+    return () => window.clearTimeout(t);
+  }, []);
   return (
-    <div
-      className="relative flex h-[120px] w-[120px] items-center justify-center rounded-full"
-      style={{
-        background: 'radial-gradient(circle at 30% 30%, #e6c07a 0%, #8a6a2a 80%)',
-        boxShadow: '0 12px 20px -8px rgba(0,0,0,0.7), inset 0 0 18px rgba(0,0,0,0.35)',
-      }}
-    >
+    <div className="pointer-events-none fixed inset-0 z-30 flex items-center justify-center">
       <div
-        className="flex h-[90px] w-[90px] items-center justify-center rounded-full bg-[#f7ead0]"
-        style={{ boxShadow: 'inset 0 0 10px rgba(80,55,20,0.4)' }}
+        className="rounded-sm px-5 py-3 font-mono text-[11px] uppercase tracking-[0.45em] text-[#2a1f12]"
+        style={{
+          background: 'linear-gradient(180deg, #faf2d9 0%, #efdfb3 100%)',
+          boxShadow: '0 16px 32px -10px rgba(0,0,0,0.6), 0 3px 0 #d8c28a',
+          opacity: mounted ? 1 : 0,
+          transform: mounted ? 'translateY(0) scale(1)' : 'translateY(6px) scale(0.94)',
+          transition: 'opacity 160ms ease-out, transform 240ms cubic-bezier(0.2,0.9,0.3,1)',
+        }}
       >
-        <svg viewBox="0 0 100 100" className="h-full w-full">
-          {[0, 90, 180, 270].map((a) => (
-            <line
-              key={a}
-              x1="50"
-              y1="10"
-              x2="50"
-              y2="18"
-              stroke="#2a1f12"
-              strokeWidth="2"
-              transform={`rotate(${a} 50 50)`}
-            />
-          ))}
-          <line
-            x1="50"
-            y1="50"
-            x2="50"
-            y2="15"
-            stroke="#c85a4a"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            transform={`rotate(${angle} 50 50)`}
-            style={{ transition: 'transform 250ms linear' }}
-          />
-          <circle cx="50" cy="50" r="2.5" fill="#2a1f12" />
-        </svg>
+        ✓ next file
       </div>
     </div>
   );
