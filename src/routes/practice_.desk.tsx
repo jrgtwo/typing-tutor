@@ -1,18 +1,26 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useEngineStore } from '@/engine/store';
 import { computeAccuracy, computeWpm } from '@/engine/metrics';
 import { usePracticeSession } from '@/hooks/usePracticeSession';
 import { useEngineElapsedMs } from '@/hooks/useEngineElapsedMs';
+import { useSession } from '@/lib/auth';
+import { useDashboard } from '@/lib/queries';
 import { DesignNav } from '@/components/DesignNav';
 import { RaccoonCameos } from '@/components/mascot/RaccoonCameos';
 import { OnScreenKeyboard } from '@/components/typing/OnScreenKeyboard';
 import { BetweenSessionsAd } from '@/components/ads/BetweenSessionsAd';
 import { SignInButton } from '@/components/auth/SignInButton';
 import { StampTray } from '@/components/desk/StampTray';
-import { StampedMode } from '@/components/desk/StampedMode';
-import { listModes } from '@/modes';
-import { cn } from '@/lib/utils';
+import {
+  // DayPlannerPage, Matchbook, Polaroid, PropertyOfHeader — temporarily
+  // hidden while we audit the functional UI. Restore by re-importing.
+  GumWrapper,
+  StashSticky,
+  VinnyCalendar,
+} from '@/components/desk/StolenProps';
+import { Stamp } from '@/modes/_shared/Stamp';
+import { DIFFICULTY_LABEL, type Difficulty, type SessionMode, listModes } from '@/modes';
 
 export const Route = createFileRoute('/practice_/desk')({
   component: DeskPractice,
@@ -57,6 +65,11 @@ function DeskPractice() {
   const modes = listModes();
   const HudComponent = activeMode.HudComponent;
   const EndScreenComponent = activeMode.EndScreenComponent;
+
+  const { session, loading: authLoading } = useSession();
+  const isAuthed = !!session && !authLoading;
+  const { data: dashboard } = useDashboard(isAuthed);
+  const activeDays = useMemo(() => weeklyActiveDays(dashboard?.sessions), [dashboard]);
 
   return (
     <main
@@ -106,71 +119,77 @@ function DeskPractice() {
         <header className="flex items-center justify-between gap-3 px-6 py-4">
           <Link
             to="/"
-            className="rounded-full bg-[#f1e4c5]/90 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.35em] text-[#2a1f12] shadow-md hover:bg-white"
+            className="rounded-full bg-[#f1e4c5]/90 px-3.5 py-1.5 font-mono text-[12px] uppercase tracking-[0.35em] text-[#2a1f12] shadow-md hover:bg-white"
           >
             ◂ leave desk
           </Link>
           <div className="flex items-center gap-3">
             <SignInButton variant="desk" />
-            <IndexCard
-              title={passage.title}
-              source={passage.source}
-              activeMode={activeMode}
-              difficulty={difficulty}
-            />
           </div>
         </header>
 
-        <div className="mx-auto max-w-6xl px-6 pb-2">
-          <StampTray
-            modes={modes}
-            activeId={activeMode.id}
-            difficulty={difficulty}
-            onSelectMode={selectMode}
-            onSelectDifficulty={selectDifficulty}
-          />
-        </div>
-
-        {/* scatter zone — three columns: left sidebar, hero notepad, right sidebar.
-            Absolute items keep the tactile scattered feel but sit inside
-            sized columns so nothing drifts into empty desk. */}
-        <section className="relative mx-auto grid max-w-6xl grid-cols-[220px_1fr_220px] items-start gap-8 px-6 pb-6">
-          {/* left column: receipt + stickies */}
-          <div className="relative h-full pt-2">
-            <div className="mb-5" style={{ transform: 'rotate(-5deg)' }}>
+        {/* scatter zone — three columns. The CENTER column stacks the
+            stamp tray above the notepad. Sidebars share the grid row so
+            their tops align with the stamp tray's top, not the notepad's
+            top. */}
+        <section className="relative mx-auto grid max-w-[1240px] grid-cols-[300px_minmax(0,1fr)_260px] items-start gap-6 px-6 pb-6">
+          {/* LEFT COLUMN — vertical stack top-aligned with stamp tray. */}
+          <div className="flex w-full flex-col items-center justify-start gap-5">
+            <div style={{ transform: 'rotate(-7deg)' }}>
               <TypoReceipt />
             </div>
-            <div className="mb-5 flex justify-center" style={{ transform: 'rotate(-4deg)' }}>
-              <Sticky color="#ffd66b">
-                <StickyStat sampler="wpm" label="WPM" big />
-              </Sticky>
+            <div style={{ transform: 'rotate(-3deg)' }}>
+              <StashSticky color="#ffd66b" rotate={0}>
+                <WpmHost />
+              </StashSticky>
             </div>
-            <div className="flex justify-center" style={{ transform: 'rotate(5deg)' }}>
-              <Sticky color="#9ddaa3">
-                <StickyStat sampler="acc" label="ACC" />
-              </Sticky>
+            <div style={{ transform: 'rotate(4deg)' }}>
+              <StashSticky color="#9ddaa3" rotate={0}>
+                <AccHost />
+              </StashSticky>
+            </div>
+            <div style={{ transform: 'rotate(-4deg)' }}>
+              <GumWrapper>
+                <ErrHost />
+              </GumWrapper>
             </div>
           </div>
 
-          {/* hero notepad, slight tilt */}
-          <div
-            className="relative mx-auto w-full max-w-[640px]"
-            style={{ transform: 'rotate(-0.8deg)' }}
-          >
-            <Notepad passage={passage} />
+          {/* CENTER — stamp tray above the notepad */}
+          <div className="mx-auto w-full max-w-[640px]">
+            <div className="pb-4">
+              <StampTray
+                modes={modes}
+                activeId={activeMode.id}
+                difficulty={difficulty}
+                onSelectMode={selectMode}
+                onSelectDifficulty={selectDifficulty}
+              />
+            </div>
+            <div
+              className="relative"
+              style={{ transform: 'rotate(-0.8deg)' }}
+            >
+              <Notepad
+                passage={passage}
+                activeMode={activeMode}
+                difficulty={difficulty}
+              />
+            </div>
           </div>
 
-          {/* right column: calendar + sticky + card stack */}
-          <div className="relative h-full pt-2">
-            <div className="mb-5 flex justify-center" style={{ transform: 'rotate(4deg)' }}>
-              <Calendar total={passages.length} index={index} />
+          {/* RIGHT COLUMN — top-aligned with stamp tray. Order:
+              calendar, picker stack. The now-playing card was removed and
+              its info now lives in the notepad header. */}
+          <div className="flex w-full flex-col items-center justify-start gap-6">
+            <div style={{ transform: 'rotate(3deg)' }}>
+              <VinnyCalendar
+                total={passages.length}
+                index={index}
+                activeDays={isAuthed ? activeDays : undefined}
+              />
             </div>
-            <div className="mb-5 flex justify-center" style={{ transform: 'rotate(-3deg)' }}>
-              <Sticky color="#f5a99a">
-                <StickyStat sampler="err" label="ERR" />
-              </Sticky>
-            </div>
-            <div className="flex justify-center">
+            <div style={{ transform: 'rotate(-2deg)' }}>
               <CardStack passages={passages} index={index} pickPassage={pickPassage} />
             </div>
           </div>
@@ -226,7 +245,7 @@ function DeskPractice() {
               }}
             >
               <div className="mb-3 flex items-center justify-between">
-                <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-[#b7d193]/80">model f · walnut</p>
+                <p className="font-mono text-[12px] uppercase tracking-[0.4em] text-[#b7d193]/80">model f · walnut</p>
                 <span className="h-1.5 w-1.5 rounded-full bg-[#89a96a]" style={{ boxShadow: '0 0 6px #89a96a' }} />
               </div>
               <OnScreenKeyboard />
@@ -240,8 +259,12 @@ function DeskPractice() {
 
 function Notepad({
   passage,
+  activeMode,
+  difficulty,
 }: {
-  passage: { title: string; body: string; modeId: string };
+  passage: { title: string; body: string; modeId: string; source?: string };
+  activeMode: SessionMode<any, any>;
+  difficulty: Difficulty;
 }) {
   return (
     <article
@@ -283,7 +306,11 @@ function Notepad({
 
       {/* the actual paper sheets — each one fills the full notepad and
           tears as a single piece of paper */}
-      <DeskSurface passage={passage} />
+      <DeskSurface
+        passage={passage}
+        activeMode={activeMode}
+        difficulty={difficulty}
+      />
     </article>
   );
 }
@@ -297,7 +324,9 @@ const ANTICIPATE_WINDOW = 18;
 const SHEET_PAD_TOP = 56;    // matches old article pt-14, clears binding
 const SHEET_PAD_X = 40;      // matches old article pl-10/pr-10
 const SHEET_PAD_BOTTOM = 40; // matches old article pb-10
-const TITLE_BLOCK_HEIGHT = 44;
+// title header is now rich (stamp + title + source + mode meta), so it's
+// taller than the old single-line italic.
+const TITLE_BLOCK_HEIGHT = 88;
 const NOTEPAD_HEIGHT =
   SHEET_PAD_TOP + TITLE_BLOCK_HEIGHT + PAGE_HEIGHT + SHEET_PAD_BOTTOM;
 const SHEET_PAPER_BG: React.CSSProperties = {
@@ -383,8 +412,12 @@ function renderChar(
 
 function DeskSurface({
   passage,
+  activeMode,
+  difficulty,
 }: {
-  passage: { title: string; body: string; modeId: string };
+  passage: { title: string; body: string; modeId: string; source?: string };
+  activeMode: SessionMode<any, any>;
+  difficulty: Difficulty;
 }) {
   const target = useEngineStore((s) => s.target);
   const cursor = useEngineStore((s) => s.cursor);
@@ -538,8 +571,26 @@ function DeskSurface({
           paddingBottom: SHEET_PAD_BOTTOM,
         }}
       >
-        <div className="mb-4 border-b border-[#8a6a3a]/40 pb-2 font-serif italic">
-          <span className="text-sm">— {passage.title} —</span>
+        <div className="mb-4 flex items-center gap-3 border-b border-[#8a6a3a]/40 pb-3">
+          <Stamp stamp={activeMode.stamp} scale={0.6} inked />
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-serif text-2xl italic leading-tight">
+              {passage.title}
+            </p>
+            {passage.source && (
+              <p className="mt-0.5 truncate font-serif text-base italic leading-tight opacity-65">
+                — {passage.source}
+              </p>
+            )}
+          </div>
+          <div className="text-right">
+            <p className="font-mono text-[12px] uppercase tracking-[0.35em] opacity-70">
+              {activeMode.label} · {DIFFICULTY_LABEL[difficulty].toLowerCase()}
+            </p>
+            <p className="mt-0.5 font-mono text-[12px] uppercase tracking-[0.35em] opacity-55">
+              file no. 042
+            </p>
+          </div>
         </div>
         <div
           className="overflow-hidden whitespace-pre-wrap break-words font-mono text-[19px] leading-[30px] tracking-[0.02em]"
@@ -590,7 +641,7 @@ function DeskSurface({
         {/* per-sheet indicators — only on the current, non-tearing sheet */}
         {isCurrent && hasNext && (
           <div
-            className="pointer-events-none absolute left-1/2 -translate-x-1/2 font-mono text-[14px] leading-none text-[#2a1f12]/45"
+            className="pointer-events-none absolute left-1/2 -translate-x-1/2 font-mono text-[16px] leading-none text-[#2a1f12]/45"
             style={{ bottom: 14 }}
           >
             ▾
@@ -598,7 +649,7 @@ function DeskSurface({
         )}
         {isCurrent && pages.length > 1 && (
           <div
-            className="pointer-events-none absolute font-mono text-[10px] uppercase tracking-[0.3em] text-[#2a1f12]/40"
+            className="pointer-events-none absolute font-mono text-[12px] uppercase tracking-[0.3em] text-[#2a1f12]/45"
             style={{ bottom: 14, right: 16 }}
           >
             {String(currentPage + 1).padStart(2, '0')}/{String(pages.length).padStart(2, '0')}
@@ -662,8 +713,18 @@ function DeskSurface({
                 paddingBottom: SHEET_PAD_BOTTOM,
               }}
             >
-              <div className="mb-4 border-b border-[#8a6a3a]/40 pb-2 font-serif italic">
-                <span className="text-sm">— {snapshotTear.title} —</span>
+              <div className="mb-4 flex items-center gap-3 border-b border-[#8a6a3a]/40 pb-3">
+                <Stamp stamp={activeMode.stamp} scale={0.6} inked />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-serif text-2xl italic leading-tight">
+                    {snapshotTear.title}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-mono text-[12px] uppercase tracking-[0.35em] opacity-70">
+                    {activeMode.label} · {DIFFICULTY_LABEL[difficulty].toLowerCase()}
+                  </p>
+                </div>
               </div>
               <div
                 className="overflow-hidden whitespace-pre-wrap break-words font-mono text-[19px] leading-[30px] tracking-[0.02em]"
@@ -685,87 +746,91 @@ function DeskSurface({
   );
 }
 
-function Sticky({
-  children,
-  color,
-  className,
-  style,
-}: {
-  children: React.ReactNode;
-  color: string;
-  className?: string;
-  style?: React.CSSProperties;
-}) {
-  return (
-    <div
-      className={cn('w-[150px] p-4 text-center text-[#2a1f12]', className)}
-      style={{
-        background: color,
-        boxShadow:
-          '0 12px 20px -8px rgba(0,0,0,0.6), inset 0 -12px 14px -10px rgba(0,0,0,0.15), inset 0 2px 0 rgba(255,255,255,0.35)',
-        ...style,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function StickyStat({ sampler, label, big }: { sampler: 'wpm' | 'acc' | 'err'; label: string; big?: boolean }) {
+/**
+ * WPM rendered as a sticky-note stat — slapped on the day-planner page.
+ */
+function WpmHost() {
   const charsCorrect = useEngineStore((s) => s.charsCorrect);
-  const charsTyped = useEngineStore((s) => s.charsTyped);
-  const errors = useEngineStore((s) => s.errors);
-
   const elapsed = useEngineElapsedMs();
-
-  const value = sampler === 'wpm'
-    ? Math.round(computeWpm(charsCorrect, elapsed)).toString()
-    : sampler === 'acc'
-      ? `${(computeAccuracy(charsCorrect, charsTyped) * 100).toFixed(0)}%`
-      : String(errors);
-
+  const wpm = Math.round(computeWpm(charsCorrect, elapsed));
   return (
     <>
-      <p className="font-mono text-[10px] uppercase tracking-[0.4em] opacity-80">{label}</p>
-      <p className={cn('mt-1 font-serif italic tabular-nums', big ? 'text-5xl' : 'text-3xl')}>
-        {value}
+      <p className="font-mono text-[10px] uppercase tracking-[0.4em] opacity-80">wpm</p>
+      <p className="mt-1 font-serif text-4xl italic tabular-nums leading-none">
+        {wpm}
       </p>
-      <p className="mt-1 font-serif text-[10px] italic opacity-60">handwritten · {new Date().toLocaleDateString()}</p>
     </>
   );
 }
 
-function IndexCard({
-  title,
-  source,
-  activeMode,
-  difficulty,
-}: {
-  title: string;
-  source?: string;
-  activeMode: import('@/modes').SessionMode<any, any>;
-  difficulty: import('@/modes').Difficulty;
-}) {
+/**
+ * ACC rendered as a sticky-note stat — same shape as WPM for parity now
+ * that the polaroid host is hidden.
+ */
+function AccHost() {
+  const charsCorrect = useEngineStore((s) => s.charsCorrect);
+  const charsTyped = useEngineStore((s) => s.charsTyped);
+  const acc = (computeAccuracy(charsCorrect, charsTyped) * 100).toFixed(0);
   return (
-    <div
-      className="flex items-center gap-3 rounded-sm px-4 py-2 text-right"
-      style={{
-        background: '#f1e4c5',
-        color: '#2a1f12',
-        boxShadow: '0 6px 12px -4px rgba(0,0,0,0.55)',
-        transform: 'rotate(1.5deg)',
-      }}
-    >
-      <StampedMode mode={activeMode} difficulty={difficulty} />
-      <div>
-        <p className="font-mono text-[9px] uppercase tracking-[0.4em] opacity-60">
-          file no. 042
-        </p>
-        <p className="font-serif text-sm italic">{title}</p>
-        {source && <p className="font-serif text-[10px] italic opacity-60">— {source}</p>}
-      </div>
-    </div>
+    <>
+      <p className="font-mono text-[10px] uppercase tracking-[0.4em] opacity-80">acc</p>
+      <p className="mt-1 font-serif text-4xl italic tabular-nums leading-none">
+        {acc}%
+      </p>
+    </>
   );
+}
+
+/**
+ * ERR scrawled in ballpoint directly on the foil gum wrapper.
+ */
+function ErrHost() {
+  const errors = useEngineStore((s) => s.errors);
+  return (
+    <>
+      <p
+        className="font-mono text-[10px] uppercase tracking-[0.4em] opacity-75"
+      >
+        slips
+      </p>
+      <p
+        className="mt-1 font-serif italic tabular-nums leading-none"
+        style={{
+          fontSize: 38,
+          color: '#1a1a3a',
+          textShadow: '0 0 0.5px rgba(20,20,60,0.4)',
+        }}
+      >
+        {errors}
+      </p>
+    </>
+  );
+}
+
+/**
+ * Compute which days (0=Sun..6=Sat) of the current local week the user
+ * had at least one typing session on, based on each session's `started_at`.
+ * Returns undefined when there are no sessions to inspect, so the calendar
+ * can render its empty state.
+ */
+function weeklyActiveDays(
+  sessions: Array<{ started_at: string }> | undefined,
+): ReadonlySet<number> | undefined {
+  if (!sessions || sessions.length === 0) return new Set<number>();
+  const now = new Date();
+  const weekStart = new Date(now);
+  weekStart.setHours(0, 0, 0, 0);
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  const days = new Set<number>();
+  for (const s of sessions) {
+    const t = new Date(s.started_at);
+    if (Number.isNaN(t.getTime())) continue;
+    if (t < weekStart || t >= weekEnd) continue;
+    days.add(t.getDay());
+  }
+  return days;
 }
 
 function TypoReceipt() {
@@ -782,15 +847,16 @@ function TypoReceipt() {
 
   return (
     <div
-      className="relative px-3 pt-3 pb-2 font-mono text-[10px] leading-[1.6] text-[#2a1f12]"
+      className="relative px-3.5 pt-3 pb-3 font-mono text-[12px] leading-[1.6] text-[#2a1f12]"
       style={{
         background: '#fbf5e3',
         boxShadow: '0 10px 18px -6px rgba(0,0,0,0.55)',
         clipPath: 'polygon(0 0, 100% 0, 100% 94%, 88% 100%, 74% 94%, 60% 100%, 46% 94%, 32% 100%, 18% 94%, 0 100%)',
+        minWidth: 130,
       }}
     >
       <p className="text-center font-bold uppercase tracking-[0.3em]">typo log</p>
-      <p className="text-center text-[9px] opacity-60">—— session ——</p>
+      <p className="text-center text-[11px] opacity-60">—— session ——</p>
       <div className="mt-1 space-y-0.5">
         {Array.from({ length: 6 }).map((_, i) => {
           const recent = typos.slice(-6);
@@ -832,28 +898,6 @@ function fmt(ch: string) {
   return ch;
 }
 
-function Calendar({ total, index }: { total: number; index: number }) {
-  const today = new Date();
-  const dayName = today.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
-  const day = today.getDate();
-  return (
-    <div
-      className="overflow-hidden rounded-sm bg-[#f7ead0] text-center"
-      style={{ boxShadow: '0 10px 18px -6px rgba(0,0,0,0.6)' }}
-    >
-      <div className="bg-[#c85a4a] py-1 font-mono text-[10px] font-bold uppercase tracking-[0.4em] text-white">
-        {dayName}
-      </div>
-      <div className="py-3">
-        <p className="font-serif text-4xl font-bold italic text-[#2a1f12]">{day}</p>
-      </div>
-      <div className="border-t border-[#c4ab6d]/50 py-1 font-mono text-[9px] uppercase tracking-[0.3em] text-[#2a1f12]/70">
-        passage {index + 1} / {total}
-      </div>
-    </div>
-  );
-}
-
 function IntermissionToast() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -863,7 +907,7 @@ function IntermissionToast() {
   return (
     <div className="pointer-events-none fixed inset-0 z-30 flex items-center justify-center">
       <div
-        className="rounded-sm px-5 py-3 font-mono text-[11px] uppercase tracking-[0.45em] text-[#2a1f12]"
+        className="rounded-sm px-5 py-3 font-mono text-[13px] uppercase tracking-[0.45em] text-[#2a1f12]"
         style={{
           background: 'linear-gradient(180deg, #faf2d9 0%, #efdfb3 100%)',
           boxShadow: '0 16px 32px -10px rgba(0,0,0,0.6), 0 3px 0 #d8c28a',
@@ -907,10 +951,19 @@ function CardStack({
 
   const previewIsCommitted = preview === index;
 
+  // Build the visible deck: the front card plus a few cards stacked
+  // behind. Each is keyed by passage id so they animate position
+  // changes when `preview` shifts (instead of unmounting/remounting).
+  const visibleDeck: { card: typeof passages[number]; depth: number; idx: number }[] = [];
+  for (let d = 0; d < ROLODEX_VISIBLE; d++) {
+    const idx = (preview + d) % passages.length;
+    visibleDeck.push({ card: passages[idx], depth: d, idx });
+  }
+
   return (
-    <div className="relative w-full max-w-[200px]">
-      <p className="mb-2 text-center font-mono text-[10px] uppercase tracking-[0.4em] text-[#f1e4c5]/70">
-        file cards
+    <div className="relative mx-auto" style={{ width: 240 }}>
+      <p className="mb-2 text-center font-mono text-[12px] uppercase tracking-[0.4em] text-[#f1e4c5]/75">
+        rolodex
       </p>
 
       <div className="mb-1 flex justify-center">
@@ -918,49 +971,126 @@ function CardStack({
           type="button"
           onClick={() => cycle(-1)}
           aria-label="Previous card"
-          className="flex h-5 w-12 items-center justify-center rounded-sm border border-[#c4ab6d]/50 bg-[#2d2218] font-mono text-[10px] text-[#f1e4c5]/80 shadow-sm transition-colors hover:bg-[#3a2c1d] hover:text-[#f1e4c5]"
+          className="flex h-6 w-14 items-center justify-center rounded-sm border border-[#c4ab6d]/50 bg-[#2d2218] font-mono text-[12px] text-[#f1e4c5]/85 shadow-sm transition-colors hover:bg-[#3a2c1d] hover:text-[#f1e4c5]"
         >
           ▲
         </button>
       </div>
 
+      {/* CRADLE STAGE — the rolodex binder body holds the deck. The
+          cradle base is rendered at the bottom; the spindle bar runs
+          horizontally through the middle of the cards (where their
+          punched holes sit). Cards keep stable id-based keys so when
+          `preview` changes, each card's depth changes and they all
+          animate to their new positions together. */}
       <div
-        className="relative h-[140px] touch-none"
+        className="relative touch-none"
         onWheel={onWheel}
+        style={{
+          height: 200,
+          perspective: 1100,
+          perspectiveOrigin: '50% 50%',
+        }}
       >
-        {passages.map((p, i) => {
-          const offset = i - preview;
-          const active = i === preview;
-          return (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => pickPassage(i)}
-              className={cn(
-                'absolute inset-x-0 rounded-sm border px-3 py-2 text-left font-serif italic transition-all duration-300 ease-out',
-                active
-                  ? previewIsCommitted
-                    ? 'border-[#c4ab6d]/60 bg-[#faf2d9] text-[#2a1f12]'
-                    : 'border-[#e5a042]/80 bg-[#faf2d9] text-[#2a1f12]'
-                  : 'border-[#c4ab6d]/60 bg-[#e6d4a8] text-[#4a3520]/80',
-              )}
-              style={{
-                top: Math.abs(offset) * 8,
-                left: offset * 4,
-                transform: `rotate(${offset * 1.5}deg)`,
-                zIndex: passages.length - Math.abs(offset),
-                boxShadow: active
-                  ? '0 14px 24px -8px rgba(0,0,0,0.7)'
-                  : '0 6px 12px -4px rgba(0,0,0,0.45)',
-              }}
-            >
-              <p className="font-mono text-[9px] not-italic uppercase tracking-[0.4em] opacity-60">
-                card · {String(i + 1).padStart(2, '0')}
-              </p>
-              <p className="mt-0.5">{p.title}</p>
-            </button>
-          );
-        })}
+        {/* the deck — render back-to-front so z-stacking is correct */}
+        {[...visibleDeck].reverse().map(({ card, depth, idx }) => (
+          <RolodexCard
+            key={card.id}
+            depth={depth}
+            cardIndex={idx}
+            total={passages.length}
+            title={card.title}
+            isFront={depth === 0}
+            isCommitted={depth === 0 && previewIsCommitted}
+            onPick={() => {
+              if (depth === 0) {
+                pickPassage(idx);
+              } else {
+                setPreview(idx);
+              }
+            }}
+          />
+        ))}
+
+        {/* SPINDLE BAR — horizontal black bar across the middle of the
+            cards, visible through their punched holes. Renders ABOVE
+            the cards so it appears to pass through them. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-3 right-3"
+          style={{
+            top: '52%',
+            height: 5,
+            background:
+              'linear-gradient(180deg, #1a0e05 0%, #0a0502 50%, #000 100%)',
+            borderRadius: 2,
+            boxShadow:
+              '0 1px 0 rgba(255,255,255,0.15), inset 0 1px 0 rgba(255,255,255,0.2)',
+            zIndex: 200,
+          }}
+        />
+
+        {/* CRADLE BASE — the brown plastic binder body cradling the
+            deck. Has two side knob accents and a chunky baseplate. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0"
+          style={{ height: 36, zIndex: 220 }}
+        >
+          {/* baseplate */}
+          <div
+            className="absolute inset-x-2 bottom-0 rounded-md"
+            style={{
+              height: 22,
+              background:
+                'linear-gradient(180deg, #5a3d1c 0%, #3a2510 60%, #1f1408 100%)',
+              boxShadow:
+                'inset 0 1px 0 rgba(255,210,150,0.25), inset 0 -2px 0 rgba(0,0,0,0.5), 0 6px 10px -3px rgba(0,0,0,0.65)',
+            }}
+          />
+          {/* front lip notch where the active card's bottom slots in */}
+          <div
+            className="absolute left-1/2 -translate-x-1/2 rounded-sm"
+            style={{
+              bottom: 14,
+              width: 70,
+              height: 8,
+              background:
+                'linear-gradient(180deg, #1a0e05 0%, #2a1d12 100%)',
+              boxShadow: 'inset 0 2px 3px rgba(0,0,0,0.75)',
+            }}
+          />
+          {/* left knob */}
+          <div
+            className="absolute"
+            style={{
+              left: -6,
+              bottom: 6,
+              width: 18,
+              height: 18,
+              borderRadius: '50%',
+              background:
+                'radial-gradient(circle at 35% 30%, #6a4820 0%, #2a1d12 80%)',
+              boxShadow:
+                'inset -1px -1px 2px rgba(0,0,0,0.7), 0 2px 3px rgba(0,0,0,0.6)',
+            }}
+          />
+          {/* right knob */}
+          <div
+            className="absolute"
+            style={{
+              right: -6,
+              bottom: 6,
+              width: 18,
+              height: 18,
+              borderRadius: '50%',
+              background:
+                'radial-gradient(circle at 35% 30%, #6a4820 0%, #2a1d12 80%)',
+              boxShadow:
+                'inset -1px -1px 2px rgba(0,0,0,0.7), 0 2px 3px rgba(0,0,0,0.6)',
+            }}
+          />
+        </div>
       </div>
 
       <div className="mt-1 flex items-center justify-center gap-3">
@@ -968,17 +1098,136 @@ function CardStack({
           type="button"
           onClick={() => cycle(1)}
           aria-label="Next card"
-          className="flex h-5 w-12 items-center justify-center rounded-sm border border-[#c4ab6d]/50 bg-[#2d2218] font-mono text-[10px] text-[#f1e4c5]/80 shadow-sm transition-colors hover:bg-[#3a2c1d] hover:text-[#f1e4c5]"
+          className="flex h-6 w-14 items-center justify-center rounded-sm border border-[#c4ab6d]/50 bg-[#2d2218] font-mono text-[12px] text-[#f1e4c5]/85 shadow-sm transition-colors hover:bg-[#3a2c1d] hover:text-[#f1e4c5]"
         >
           ▼
         </button>
       </div>
 
-      <p className="mt-2 text-center font-mono text-[9px] uppercase tracking-[0.35em] text-[#f1e4c5]/50">
+      <p className="mt-2 text-center font-mono text-[11px] uppercase tracking-[0.35em] text-[#f1e4c5]/55">
         {String(preview + 1).padStart(2, '0')} / {String(passages.length).padStart(2, '0')}
         {!previewIsCommitted && <span className="ml-2 text-[#e5a042]">· tap to load</span>}
       </p>
     </div>
+  );
+}
+
+// number of cards visible in the deck (front + cards stacked behind).
+const ROLODEX_VISIBLE = 6;
+
+/**
+ * One physical card on the rolodex spindle. `depth` is its position in
+ * the visible stack — 0 = front (upright, fully visible), >0 = behind
+ * the front card, fanned back so its top edge peeks out. Cards keep
+ * stable id-based keys so when the previewed card changes, each card's
+ * depth changes and CSS transitions animate them all to their new
+ * positions in unison — like the physical deck rotating around the
+ * binder's spindle.
+ */
+function RolodexCard({
+  depth,
+  cardIndex,
+  total,
+  title,
+  isFront,
+  isCommitted,
+  onPick,
+}: {
+  depth: number;
+  cardIndex: number;
+  total: number;
+  title: string;
+  isFront: boolean;
+  isCommitted: boolean;
+  onPick: () => void;
+}) {
+  // back cards lean back at increasing angles, recede in z, and lift
+  // slightly so each successive card's top edge fans out above the one
+  // in front of it — a real deck of cards on a spindle.
+  const rotateX = -10 * depth;
+  const ty = -6 * depth;
+  const tz = -10 * depth;
+  const opacity = isFront ? 1 : Math.max(0.4, 1 - 0.18 * depth);
+
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      tabIndex={depth > 1 ? -1 : 0}
+      aria-label={`Card ${cardIndex + 1} of ${total}: ${title}`}
+      className="absolute left-3 right-3 rounded-sm border text-left font-serif italic"
+      style={{
+        // hinge cards around their MIDDLE — that's where the spindle
+        // bar passes through. Both halves of the card swing around
+        // the same horizontal axis like a real rolodex.
+        top: 12,
+        bottom: 32,
+        background: isFront
+          ? isCommitted
+            ? '#faf2d9'
+            : '#fff7df'
+          : '#ead8a8',
+        borderColor: isFront
+          ? isCommitted
+            ? 'rgba(196,171,109,0.7)'
+            : 'rgba(229,160,66,0.85)'
+          : 'rgba(196,171,109,0.55)',
+        color: '#2a1f12',
+        transform: `translate3d(0, ${ty}px, ${tz}px) rotateX(${rotateX}deg)`,
+        transformOrigin: '50% 50%',
+        transformStyle: 'preserve-3d',
+        opacity,
+        zIndex: 100 - depth,
+        transition:
+          'transform 380ms cubic-bezier(0.22, 0.85, 0.28, 1), opacity 300ms ease-out, background-color 220ms ease-out, border-color 220ms ease-out',
+        boxShadow: isFront
+          ? '0 14px 22px -10px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.55)'
+          : '0 5px 10px -4px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.3)',
+        cursor: 'pointer',
+      }}
+    >
+      <div className="flex h-full flex-col px-3 pt-2 pb-3">
+        <p className="font-mono text-[11px] not-italic uppercase tracking-[0.4em] opacity-60">
+          card · {String(cardIndex + 1).padStart(2, '0')} / {String(total).padStart(2, '0')}
+        </p>
+        <p className="mt-1 flex-1 text-base leading-tight">{title}</p>
+      </div>
+      {/* punched holes — only on the front card so the spindle bar
+          reads cleanly through them. The bar itself is rendered above
+          all cards in the stage so it visually passes through. */}
+      {isFront && (
+        <>
+          <span
+            aria-hidden
+            className="absolute"
+            style={{
+              left: '32%',
+              top: '52%',
+              width: 14,
+              height: 7,
+              borderRadius: 3,
+              background: '#1a0e05',
+              boxShadow:
+                'inset 0 1px 2px rgba(0,0,0,0.85), 0 1px 0 rgba(255,255,255,0.45)',
+            }}
+          />
+          <span
+            aria-hidden
+            className="absolute"
+            style={{
+              right: '32%',
+              top: '52%',
+              width: 14,
+              height: 7,
+              borderRadius: 3,
+              background: '#1a0e05',
+              boxShadow:
+                'inset 0 1px 2px rgba(0,0,0,0.85), 0 1px 0 rgba(255,255,255,0.45)',
+            }}
+          />
+        </>
+      )}
+    </button>
   );
 }
 
@@ -987,7 +1236,7 @@ function DeskFooter({ onNext, onReset }: { onNext: () => void; onReset: () => vo
   if (status !== 'finished') {
     return (
       <p
-        className="text-center font-serif text-sm italic text-[#f1e4c5]/80"
+        className="text-center font-serif text-base italic text-[#f1e4c5]/85"
       >
         the notepad is waiting. the raccoon is, allegedly, at lunch.
       </p>
@@ -998,14 +1247,14 @@ function DeskFooter({ onNext, onReset }: { onNext: () => void; onReset: () => vo
       <button
         type="button"
         onClick={onReset}
-        className="rounded-sm bg-[#f1e4c5] px-5 py-2 font-mono text-[11px] uppercase tracking-[0.35em] text-[#2a1f12] shadow-md hover:bg-white"
+        className="rounded-sm bg-[#f1e4c5] px-5 py-2.5 font-mono text-[13px] uppercase tracking-[0.35em] text-[#2a1f12] shadow-md hover:bg-white"
       >
         Tear page
       </button>
       <button
         type="button"
         onClick={onNext}
-        className="rounded-sm bg-[#c85a4a] px-5 py-2 font-mono text-[11px] uppercase tracking-[0.35em] text-white shadow-md hover:bg-[#d86a5a]"
+        className="rounded-sm bg-[#c85a4a] px-5 py-2.5 font-mono text-[13px] uppercase tracking-[0.35em] text-white shadow-md hover:bg-[#d86a5a]"
       >
         Next file →
       </button>
